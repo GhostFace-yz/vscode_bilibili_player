@@ -1,6 +1,6 @@
 import * as React from 'react';
 import * as SelectPrimitive from '@radix-ui/react-select';
-import { Check, ChevronDown, ChevronUp } from '@ricons/tabler';
+import { Check, ChevronDown } from '@ricons/tabler';
 import { clsx } from 'clsx';
 
 /**
@@ -38,13 +38,9 @@ const SelectContent = React.forwardRef<
       style={{ zIndex: 2147483001 }}
       {...props}
     >
-      <SelectPrimitive.ScrollUpButton className="bili-select-scroll">
-        <ChevronUp width={13} height={13} />
-      </SelectPrimitive.ScrollUpButton>
-      <SelectPrimitive.Viewport className="bili-select-viewport">{children}</SelectPrimitive.Viewport>
-      <SelectPrimitive.ScrollDownButton className="bili-select-scroll">
-        <ChevronDown width={13} height={13} />
-      </SelectPrimitive.ScrollDownButton>
+      {/* 不使用 SelectPrimitive.Viewport：它会注入一个带 dangerouslySetInnerHTML 的 <style>，
+          在 VS Code 的 require-trusted-types-for 'script' 下会直接抛错。 */}
+      <div className="bili-select-viewport">{children}</div>
     </SelectPrimitive.Content>
   </SelectPrimitive.Portal>
 ));

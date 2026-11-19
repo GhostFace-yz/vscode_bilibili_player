@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.2
+
+- 修复 VS Code `require-trusted-types-for 'script'` 下 HUD 空白：移除 Radix Select Viewport 注入的 `<style dangerouslySetInnerHTML>`，改用普通滚动容器
+- 修复重载时输出通道已关闭导致「应用皮肤」中断；`visible` 在注入前先置为 true
+- 皮肤版本变化后自动重新显示一次，避免升级后停在隐藏状态
+
 ## 0.2.1
 
 - HUD 只连接带 `apiVersion >= 2` 的本地服务，避免多窗口升级期间连到旧版扩展而崩溃

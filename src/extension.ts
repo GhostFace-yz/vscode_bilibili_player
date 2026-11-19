@@ -15,6 +15,7 @@ import { applyPatch, isPatched, restorePatch, writeSkinConfig } from './workbenc
 import { openPlayerPanel } from './webview/playerPanel';
 
 const TOKEN_KEY = 'bilibiliPlayer.apiToken';
+const SKIN_VERSION_KEY = 'bilibiliPlayer.skinVersion';
 
 interface Services {
   auth: BiliAuth;
@@ -103,9 +104,30 @@ async function initServices(context: vscode.ExtensionContext): Promise<Services>
 
   const started: Services = { auth, state, server, token };
   await syncSkinConfig(context, started);
+  await ensureVisibleAfterUpdate(context, started, version);
   updateStatusBar(started);
 
   return started;
+}
+
+async function ensureVisibleAfterUpdate(
+  context: vscode.ExtensionContext,
+  started: Services,
+  version: string,
+): Promise<void> {
+  const install = locateWorkbench(vscode.env.appRoot, vscode.version);
+  if (!install || !isPatched(install)) {
+    return;
+  }
+
+  const lastVersion = context.globalState.get<string>(SKIN_VERSION_KEY);
+  if (lastVersion === version) {
+    return;
+  }
+
+  await started.state.patch({ visible: true });
+  await context.globalState.update(SKIN_VERSION_KEY, version);
+  log(`皮肤版本 ${lastVersion ?? '未知'} → ${version}，已重新显示。`);
 }
 
 async function getOrCreateToken(context: vscode.ExtensionContext): Promise<string> {
@@ -292,8 +314,9 @@ async function runApply(context: vscode.ExtensionContext): Promise<void> {
 
     const assets = readSkinAssets(context, skinConfigFor(context, started));
     const backupRoot = path.join(context.globalStorageUri.fsPath, 'workbench-backups');
-    applyPatch(install, assets, { backupRoot, cacheKey: String(Date.now()), log });
     await started.state.patch({ visible: true });
+    applyPatch(install, assets, { backupRoot, cacheKey: String(Date.now()), log });
+    await context.globalState.update(SKIN_VERSION_KEY, String(context.extension.packageJSON.version ?? '0.0.0'));
     log(`皮肤已应用到 ${install.htmlPath}`);
 
     const mismatches = findChecksumMismatches(install.appRoot, install.productJsonPath);
@@ -443,7 +466,11 @@ async function requireServices(): Promise<Services> {
 }
 
 function log(message: string): void {
-  output?.appendLine(`[${new Date().toISOString()}] ${message}`);
+  try {
+    output?.appendLine(`[${new Date().toISOString()}] ${message}`);
+  } catch {
+    // 重载窗口时输出通道可能已关闭，不能让它中断注入/还原流程
+  }
 }
 
 function reportError(error: unknown): void {
