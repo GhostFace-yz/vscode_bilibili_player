@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.4.7
+
+- 音轨改走本地代理 `/api/audio`：扩展宿主补 Referer/UA、把 `application/octet-stream` 规范成 `audio/mp4`、转发 Range；解决 VS Code 里 `<audio>` 直接请求 B 站 m4s 的 `MEDIA_ERR_SRC_NOT_SUPPORTED`
+- 原生 720P 也获取一条 DASH 音轨，video 静音、独立 audio 出声；外置音轨失败时自动退回 video 内嵌音轨
+- CSP `media-src` 增加 `http://127.0.0.1:*`
+- 新增 HUD「测试声音」按钮（0.8s 440Hz WAV），用于区分 workbench 媒体输出问题
+- 0.4.6 的 DASH 失败自动回退 720P / 暂停提示修复保留
+
 ## 0.4.6
 
 - 修复 DASH 音轨在 VS Code 中 `MEDIA_ERR_SRC_NOT_SUPPORTED`（诊断显示 audio.error=4）导致无声：audio 增加 `no-referrer`、改为 1px 可视隐藏元素、音轨失败时依次尝试 `audioBackupUrls`，全部失败自动回退 720P 原生 mp4（音轨在 video 内）

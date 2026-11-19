@@ -88,18 +88,32 @@ async function initServices(context: vscode.ExtensionContext): Promise<Services>
   const state = new ExtensionState(context, auth);
   const version = String(context.extension.packageJSON.version ?? '0.0.0');
 
+  let apiPort = 0;
   const server = await startApiServer({
     token,
     version,
     getState: () => state.snapshot(),
     patchState: (patch) => state.patch(patch),
-    getPlayInfo: (ref, qn) => getPlayInfo(auth.client(), ref, qn),
+    getPlayInfo: async (ref, qn) => {
+      const info = await getPlayInfo(auth.client(), ref, qn);
+      if (!apiPort) {
+        return info;
+      }
+      const proxy = (audioUrl: string) =>
+        `http://127.0.0.1:${apiPort}/api/audio?url=${encodeURIComponent(audioUrl)}&token=${encodeURIComponent(token)}`;
+      return {
+        ...info,
+        audioUrl: info.audioUrl ? proxy(info.audioUrl) : undefined,
+        audioBackupUrls: info.audioBackupUrls?.map(proxy),
+      };
+    },
     loginQr: () => auth.generateQr(),
     loginPoll: (key) => auth.pollQr(key),
     logout: () => auth.logout(),
     log,
   });
 
+  apiPort = server.port;
   log(`本地 API 已启动：http://127.0.0.1:${server.port}`);
 
   const started: Services = { auth, state, server, token };

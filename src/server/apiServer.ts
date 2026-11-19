@@ -1,4 +1,5 @@
 import * as http from 'node:http';
+import { Readable } from 'node:stream';
 import { PORT_RANGE } from '../shared/types';
 import type {
   LoginPoll,
@@ -120,6 +121,11 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
     return;
   }
 
+  if (path === '/api/audio' && req.method === 'GET') {
+    await proxyAudio(req, res, url);
+    return;
+  }
+
   if (path === '/api/diagnostics' && req.method === 'POST') {
     const payload = await readJson<unknown>(req);
     lastDiagnostics = { at: Date.now(), payload };
@@ -154,6 +160,84 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
   }
 
   sendJson(res, 404, { error: 'Not found' });
+}
+
+/**
+ * 把 B 站音轨从扩展宿主转发给 workbench 的 <audio>。
+ * 直接让渲染进程请求 CDN 的 m4s 时，VS Code 里会出现 MEDIA_ERR_SRC_NOT_SUPPORTED；
+ * 这里统一补 Referer/UA、把 octet-stream 改成 audio/mp4，并转发 Range。
+ */
+async function proxyAudio(req: http.IncomingMessage, res: http.ServerResponse, url: URL): Promise<void> {
+  const raw = url.searchParams.get('url');
+  if (!raw) {
+    sendJson(res, 400, { error: '缺少 url' });
+    return;
+  }
+  let target: URL;
+  try {
+    target = new URL(raw);
+  } catch {
+    sendJson(res, 400, { error: '非法 url' });
+    return;
+  }
+  if (target.protocol !== 'https:') {
+    sendJson(res, 400, { error: '只允许 https 音轨' });
+    return;
+  }
+  const host = target.hostname.toLowerCase();
+  const allowed =
+    host.endsWith('.bilivideo.com') ||
+    host.endsWith('.bilivideo.cn') ||
+    host.endsWith('.mountaintoys.cn') ||
+    host.includes('akamaized') ||
+    host.endsWith('.bilibili.com');
+  if (!allowed) {
+    sendJson(res, 400, { error: '不支持的音轨域名' });
+    return;
+  }
+
+  const headers: Record<string, string> = {
+    Referer: 'https://www.bilibili.com/',
+    'User-Agent':
+      'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120 Safari/537.36',
+  };
+  if (req.headers.range) {
+    headers.Range = req.headers.range;
+  }
+
+  let upstream: Response;
+  try {
+    upstream = await fetch(target, { headers });
+  } catch (error) {
+    sendJson(res, 502, { error: `音轨上游请求失败：${error instanceof Error ? error.message : String(error)}` });
+    return;
+  }
+  if (!upstream.ok) {
+    sendJson(res, upstream.status, { error: `音轨上游 HTTP ${upstream.status}` });
+    return;
+  }
+
+  res.statusCode = upstream.status;
+  const contentType = upstream.headers.get('content-type') ?? '';
+  res.setHeader(
+    'Content-Type',
+    contentType.includes('octet-stream') || !contentType ? 'audio/mp4' : contentType,
+  );
+  for (const name of ['content-length', 'content-range', 'accept-ranges', 'etag', 'last-modified']) {
+    const value = upstream.headers.get(name);
+    if (value) {
+      res.setHeader(name, value);
+    }
+  }
+  res.setHeader('Cache-Control', 'no-store');
+
+  if (!upstream.body) {
+    res.end();
+    return;
+  }
+  const body = Readable.fromWeb(upstream.body as unknown as import('node:stream/web').ReadableStream);
+  req.on('close', () => body.destroy());
+  body.pipe(res);
 }
 
 function setCorsHeaders(res: http.ServerResponse): void {

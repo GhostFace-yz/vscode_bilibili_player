@@ -26,13 +26,14 @@ export async function getPlayInfo(client: BiliClient, ref: VideoRef, qn: number)
   const segment = durl?.durl?.[0];
   const durlPlayable = segment?.url && !/flv/i.test(durl?.format ?? '') ? segment : undefined;
 
+  // 即使最终用原生 durl，也取一条 DASH 音轨：
+  // VS Code workbench 里原生 <video> 的内嵌音轨存在不发声/无法解码的情况，
+  // 统一用独立 audio 元素出声更可控。
   let dash: PlayurlDashData | undefined;
-  if (qn > 64) {
-    try {
-      dash = await client.dashPlayurl(view.bvid, cid, qn);
-    } catch {
-      // 没有 DASH 时继续走 durl
-    }
+  try {
+    dash = await client.dashPlayurl(view.bvid, cid, qn);
+  } catch {
+    // 没有 DASH 时继续走 durl
   }
 
   const dashVideo = dash?.dash ? pickDashVideo(dash.dash.video, qn) : undefined;
@@ -101,8 +102,8 @@ export async function getPlayInfo(client: BiliClient, ref: VideoRef, qn: number)
     mode: useDash ? 'dash' : 'native',
     url: useDash && dashVideo ? pickDashUrl(dashVideo) : segment!.url,
     backupUrls: useDash && dashVideo ? pickDashBackups(dashVideo) : (segment?.backup_url ?? []),
-    audioUrl: useDash && dashAudio ? pickDashUrl(dashAudio) : undefined,
-    audioBackupUrls: useDash && dashAudio ? pickDashBackups(dashAudio) : undefined,
+    audioUrl: dashAudio ? pickDashUrl(dashAudio) : undefined,
+    audioBackupUrls: dashAudio ? pickDashBackups(dashAudio) : undefined,
     episodes,
     episodeIndex,
   };

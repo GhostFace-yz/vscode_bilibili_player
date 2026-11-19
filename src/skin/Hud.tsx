@@ -34,6 +34,7 @@ import type {
 } from '../shared/types';
 import { DEFAULT_SKIN_SETTINGS } from '../shared/types';
 import { SkinApi } from './api';
+import { TEST_TONE } from './testTone';
 import { Button } from './components/ui/button';
 import {
   Select,
@@ -114,7 +115,8 @@ export function Hud({ config, videoHost }: HudProps) {
     const video = videoRef.current;
     const audio = audioRef.current;
     if (video) {
-      video.muted = mutedRef.current;
+      // 有独立音轨时 video 必须静音，避免原生 durl 的内嵌音轨和 audio 双响。
+      video.muted = mutedRef.current || Boolean(audio);
       video.volume = volumeRef.current;
     }
     if (audio) {
@@ -253,6 +255,12 @@ export function Hud({ config, videoHost }: HudProps) {
     if (backup) {
       audioBackupIndex.current += 1;
       setAudioSrc(backup);
+      return;
+    }
+    // 原生模式下外置音轨失败：退回视频内嵌音轨。
+    if (info.mode === 'native' && info.audioUrl) {
+      setAudioSrc(null);
+      setNotice('独立音轨加载失败，已切回视频内音轨');
       return;
     }
     // DASH 音轨 CDN 失败时自动回退 720P 原生 mp4（音轨在 video 里），保证有声音。
@@ -517,7 +525,7 @@ export function Hud({ config, videoHost }: HudProps) {
 
   useEffect(() => {
     if (videoRef.current) {
-      videoRef.current.muted = muted;
+      videoRef.current.muted = muted || Boolean(audioRef.current);
     }
     if (audioRef.current) {
       audioRef.current.muted = muted;
@@ -994,6 +1002,15 @@ export function Hud({ config, videoHost }: HudProps) {
     }
   };
 
+  const playTestTone = () => {
+    const tone = new Audio(TEST_TONE);
+    tone.volume = volumeRef.current;
+    void tone
+      .play()
+      .then(() => setNotice('测试声音已播放：能听到说明 workbench 媒体输出正常'))
+      .catch((error) => setError(`测试声音播放失败：${toMessage(error)}`));
+  };
+
   const hideSkin = async () => {
     try {
       await api.patch({ visible: false });
@@ -1127,7 +1144,7 @@ export function Hud({ config, videoHost }: HudProps) {
           ref={videoRef}
           className="bili-video"
           src={srcUrl}
-          muted={muted}
+          muted={muted || Boolean(audioSrc)}
           playsInline
           preload="auto"
           onLoadedMetadata={(event) => {
@@ -1490,6 +1507,9 @@ export function Hud({ config, videoHost }: HudProps) {
                 <span className="bp-text-[11px] bili-subtle">
                   {online ? '本地服务已连接' : '本地服务断开'}
                 </span>
+                <Button variant="link" size="sm" className="bili-link-btn" onClick={playTestTone}>
+                  测试声音
+                </Button>
 
                 <div className="bp-ml-auto bp-flex bp-items-center bp-gap-2">
                   {state?.user ? (

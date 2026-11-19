@@ -1,6 +1,6 @@
 /** 追加到 workbench CSP 的源，允许直接播放 B 站 CDN 视频并访问本地 API。 */
 export const CSP_ADDITIONS: Record<string, string[]> = {
-  'media-src': ['https:', 'blob:'],
+  'media-src': ['https:', 'blob:', 'http://127.0.0.1:*'],
   'connect-src': ['http://127.0.0.1:*', 'http://localhost:*'],
   'frame-src': ['https://player.bilibili.com'],
 };
