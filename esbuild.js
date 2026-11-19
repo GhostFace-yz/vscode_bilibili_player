@@ -36,6 +36,7 @@ const builds = [
     format: 'iife',
     target: 'chrome120',
     jsx: 'automatic',
+    loader: { '.png': 'dataurl' },
   },
 ];
 
@@ -47,6 +48,7 @@ async function main() {
     return;
   }
   await Promise.all(builds.map((options) => esbuild.build(options)));
+  console.log('[esbuild] 构建完成：在 VS Code 中按 F5 调试；若皮肤已应用，请重新执行「B站皮肤: 应用皮肤」以更新注入资源。');
 }
 
 main().catch((error) => {

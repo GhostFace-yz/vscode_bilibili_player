@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.1.1
+
+- 包管理切换到 pnpm（移除 package-lock.json，新增 pnpm-lock.yaml）
+- 新增扩展图标与 HUD 头像 logo（`src/asset/logo.png` 裁剪为 128/96px）
+- 新增 `pnpm run vsix` 打包命令
+- 补充“compile 后为什么没效果”的说明
+
 ## 0.1.0
 
 - 工作台注入：视频层注入 `workbench.html`，透明编辑区/侧边栏，视频在代码下方

@@ -2,6 +2,9 @@
 src/**
 docs/**
 test/**
+pnpm-lock.yaml
+tailwind.config.js
+*.vsix
 scripts/**
 .chrome-profile/**
 .chrome-crashes/**

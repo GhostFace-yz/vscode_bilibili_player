@@ -1,8 +1,10 @@
 # vscode_bilibili_player
 
+<img src="media/logo.png" width="96" align="right" alt="logo" />
+
 把 B 站视频铺在 VS Code 工作台最底层：视频在代码下面播放，编辑区、侧边栏透明/半透明，右下角悬浮控制条——写代码和看视频真正在同一个画面里，而不是挤一个侧边栏。
 
-> v0.1.0：工作台注入、720P 直连播放、扫码登录、React + Tailwind HUD 已完成，并在 macOS / VS Code 1.147 上实测通过。
+> v0.1.1：工作台注入、720P 直连播放、扫码登录、React + Tailwind HUD 已完成，并在 macOS / VS Code 1.147 上实测通过。包管理工具为 **pnpm**。
 
 ## 功能
 
@@ -16,19 +18,34 @@
 
 ## 安装与运行
 
+需要 Node.js 20+、pnpm 10+（`corepack enable` 或直接安装 pnpm）。
+
 ```bash
-npm install
-npm run compile     # 构建扩展 + 皮肤 + Tailwind
+pnpm install
+pnpm run compile     # 构建扩展 + 皮肤 + Tailwind 到 dist/
 ```
 
-> 需要 Node.js 20+。如果 `npm install` 报 `~/.npm` 权限错误（本机曾出现过），改用项目内缓存：
-> `npm install --cache ./.npm-cache`。
+### 方式 A：开发调试（F5）
 
-在 VS Code 中打开本目录，按 `F5` 启动扩展开发宿主，然后执行：
+1. 在 VS Code 中打开本目录，按 `F5` 启动 Extension Development Host
+2. 命令面板执行 `B站皮肤: 应用皮肤（注入工作台）` → 「应用并重载」
+3. 重载后右下角出现 HUD：输入 BV 号（如 `BV1GJ411x7h7`）播放，或点「扫码登录」
 
-1. `B站皮肤: 应用皮肤（注入工作台）` → 选择「应用并重载」
-2. 重载后右下角出现 HUD
-3. 输入 BV 号（如 `BV1GJ411x7h7`）→ 播放；或点「扫码登录」
+### 方式 B：日常使用（安装 VSIX）
+
+```bash
+pnpm run vsix
+```
+
+生成 `vscode-bilibili-player-0.1.1.vsix`，然后在 VS Code 扩展面板右上角 `...` → **从 VSIX 安装**，重载窗口后执行 `B站皮肤: 应用皮肤`。
+
+### 为什么 `pnpm run compile` 后“没有效果”？
+
+`compile` 只负责**构建产物到 `dist/`**，它不会启动扩展，也不会自动更新已经注入到 VS Code 里的皮肤：
+
+- 如果还没安装/启动扩展：用上面的 F5 或安装 VSIX
+- 如果已经应用过皮肤：重新编译后要再执行一次 `B站皮肤: 应用皮肤`（或「仅应用」后重载），因为注入到 workbench 目录的是构建产物副本
+- 皮肤更新后重载窗口才会生效（命令里选「应用并重载」会自动重载）
 
 > 「应用皮肤」会修改 VS Code 安装目录中的 `workbench.html`（以及写入 3 个皮肤文件），需要当前用户对安装目录有写权限。macOS 正常安装在 `/Applications` 时一般可直接写入。
 
@@ -67,6 +84,7 @@ npm run compile     # 构建扩展 + 皮肤 + Tailwind
 - **TypeScript**：扩展宿主 + 注入脚本 + React HUD
 - **React 19 + Tailwind CSS 3**：HUD。Tailwind 关闭了 preflight、类名加 `bp-` 前缀、作用域限定在 `#bili-skin-hud`，避免重置 VS Code 工作台样式
 - **esbuild**：扩展（CJS / Node）与皮肤（IIFE / 浏览器）双产物
+- **pnpm 10**：包管理与 lockfile
 - **Node.js**：本地 HTTP API（127.0.0.1:17321–17330）、B 站 API、Cookie、文件补丁
 - **qrcode**：本地生成登录二维码
 
@@ -133,17 +151,17 @@ test/hud-fixture.html     # 浏览器里预览 HUD
 ## 开发
 
 ```bash
-npm run check     # tsc --noEmit
-npm run watch     # esbuild + tailwind watch
-npm run compile   # 生产构建到 dist/
-npm run package   # 生产构建（供 vsce 打包）
+pnpm run check       # tsc --noEmit
+pnpm run watch       # esbuild + tailwind watch
+pnpm run compile     # 构建到 dist/
+pnpm run package     # 生产构建
+pnpm run vsix        # 生产构建 + 打包 VSIX
 ```
 
 浏览器里预览 HUD（不需要动 VS Code）：
 
 ```bash
-node -e "require('esbuild').buildSync({entryPoints:['scripts/dev-server.ts'],bundle:true,platform:'node',format:'cjs',outfile:'dist/dev-server.cjs',target:'node20'})"
-node dist/dev-server.cjs        # 127.0.0.1:17321
+pnpm run dev:server              # 127.0.0.1:17321
 python3 -m http.server 8099      # 另一个终端
 # 打开 http://127.0.0.1:8099/test/hud-fixture.html
 ```

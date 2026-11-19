@@ -10,6 +10,7 @@ import type {
   VideoRef,
 } from '../shared/types';
 import { DEFAULT_SKIN_SETTINGS } from '../shared/types';
+import logoUrl from './logo.png';
 import { SkinApi } from './api';
 
 interface HudProps {
@@ -435,9 +436,11 @@ export function Hud({ config, videoHost }: HudProps) {
         {open ? (
           <div className="bili-panel">
             <div className="bp-flex bp-items-center bp-gap-2 bp-border-b bp-border-white/10 bp-px-3 bp-py-2.5">
-              <span className="bp-flex bp-h-6 bp-w-6 bp-shrink-0 bp-items-center bp-justify-center bp-rounded-md bp-bg-[#fb7299] bp-text-[13px] bp-font-bold bp-text-black">
-                B
-              </span>
+              <img
+                className="bp-h-6 bp-w-6 bp-shrink-0 bp-rounded-md bp-object-cover"
+                src={logoUrl}
+                alt=""
+              />
               <div className="bp-min-w-0 bp-flex-1">
                 <div className="bp-truncate bp-text-[13px] bp-font-medium">
                   {info?.title ?? '未加载视频'}

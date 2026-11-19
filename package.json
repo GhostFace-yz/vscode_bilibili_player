@@ -2,7 +2,9 @@
   "name": "vscode-bilibili-player",
   "displayName": "Bilibili 视频皮肤",
   "description": "把 B 站视频铺在 VS Code 工作台背景层播放，边写代码边看视频。",
-  "version": "0.1.0",
+  "version": "0.1.1",
+  "packageManager": "pnpm@10.32.1",
+  "icon": "media/logo.png",
   "publisher": "GhostFace-yz",
   "license": "MIT",
   "repository": {
@@ -170,10 +172,19 @@
   "scripts": {
     "check": "tsc --noEmit",
     "build:skin": "tailwindcss -i src/skin/tailwind.css -o dist/skin.css --minify",
-    "compile": "node esbuild.js && npm run build:skin",
+    "compile": "node esbuild.js && pnpm run build:skin",
     "watch": "concurrently -k -n esbuild,tailwind -c blue,magenta \"node esbuild.js --watch\" \"tailwindcss -i src/skin/tailwind.css -o dist/skin.css --watch\"",
-    "package": "node esbuild.js --production && npm run build:skin",
-    "vscode:prepublish": "npm run package"
+    "dev": "pnpm run watch",
+    "dev:server": "esbuild scripts/dev-server.ts --bundle --platform=node --format=cjs --outfile=dist/dev-server.cjs --target=node20 && node dist/dev-server.cjs",
+    "package": "node esbuild.js --production && pnpm run build:skin",
+    "vsix": "pnpm run package && vsce package --no-dependencies",
+    "vscode:prepublish": "pnpm run package"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "@vscode/vsce-sign",
+      "esbuild"
+    ]
   },
   "devDependencies": {
     "@types/node": "^22.10.0",
@@ -181,10 +192,9 @@
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
     "@types/vscode": "^1.85.0",
-    "autoprefixer": "^10.6.2",
+    "@vscode/vsce": "^4.1.1",
     "concurrently": "^9.2.5",
     "esbuild": "^0.25.0",
-    "postcss": "^8.5.33",
     "qrcode": "^1.5.4",
     "react": "^19.3.1",
     "react-dom": "^19.3.1",
