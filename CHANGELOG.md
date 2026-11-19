@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.4.5
+
+- 增加 `/api/diagnostics` 本地诊断端点，HUD 每 2s 上报真实媒体状态（video/audio 的 muted/volume/paused/readyState/error、音画 drift、外部 media）
+- 增加自动播放解锁：用户点击画面/按键时在真实手势里重新 `play()` 独立音轨并取消静音；被拦截时 HUD 显示提示
+- 修复 DASH 音轨被自动播放策略挡住时“有画面没声音”的场景
+
 ## 0.4.4
 
 - 修复音频生命周期关键 bug：切换清晰度/切回原生时，`load()` 先暂停旧音轨，但 250ms 同步循环又把它 `play()` 回来；随后 React 卸载旧 `<audio>`，它会变成 detached element 继续出声，导致“音画完全不同步 + 暂停还在响”

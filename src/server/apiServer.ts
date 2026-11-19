@@ -11,6 +11,8 @@ import type {
 
 export const API_VERSION = 2;
 
+let lastDiagnostics: { at: number; payload: unknown } | null = null;
+
 export interface ApiServerDeps {
   token: string;
   getState(): Promise<SkinState>;
@@ -115,6 +117,18 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
     };
     const info = await deps.getPlayInfo(ref, qn);
     sendJson(res, 200, info);
+    return;
+  }
+
+  if (path === '/api/diagnostics' && req.method === 'POST') {
+    const payload = await readJson<unknown>(req);
+    lastDiagnostics = { at: Date.now(), payload };
+    sendJson(res, 200, { ok: true });
+    return;
+  }
+
+  if (path === '/api/diagnostics' && req.method === 'GET') {
+    sendJson(res, 200, lastDiagnostics ?? { ok: true, empty: true });
     return;
   }
 

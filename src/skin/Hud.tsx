@@ -84,6 +84,7 @@ export function Hud({ config, videoHost }: HudProps) {
     bottom: number;
   } | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [audioBlocked, setAudioBlocked] = useState(false);
   const [online, setOnline] = useState(true);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -122,10 +123,16 @@ export function Hud({ config, videoHost }: HudProps) {
     }
   }, []);
 
+  const notePlayError = useCallback((error: unknown) => {
+    mediaErrorRef.current = toMessage(error);
+    setAudioBlocked(true);
+  }, []);
+
   const requestedKey = useRef('');
   const loadSeq = useRef(0);
   const audioSwitching = useRef(false);
   const visibleRef = useRef(true);
+  const mediaErrorRef = useRef<string | null>(null);
   const backupIndex = useRef(0);
   const pendingSeek = useRef(0);
   const initialized = useRef(false);
@@ -256,6 +263,95 @@ export function Hud({ config, videoHost }: HudProps) {
     }
   }, [visible]);
 
+  // 自动播放策略：用户第一次点击/按键时，在真实手势里再尝试播放独立音轨/取消静音。
+  useEffect(() => {
+    const unlock = (event: Event) => {
+      const target = event.target as Element | null;
+      // 播放/静音按钮自己会在 React handler 里处理，避免 capture 阶段先 unlock 再被暂停。
+      if (target?.closest('.bili-play-btn, .bili-icon-btn')) {
+        return;
+      }
+      const video = videoRef.current;
+      if (!video || video.paused) {
+        return;
+      }
+      applyMediaSettings();
+      if (!mutedRef.current) {
+        void video.play().then(() => setAudioBlocked(false)).catch(notePlayError);
+      }
+      const audio = audioRef.current;
+      if (audio && audio.paused && !mutedRef.current) {
+        void audio.play().then(() => setAudioBlocked(false)).catch(notePlayError);
+      }
+    };
+    window.addEventListener('pointerdown', unlock, true);
+    window.addEventListener('keydown', unlock, true);
+    return () => {
+      window.removeEventListener('pointerdown', unlock, true);
+      window.removeEventListener('keydown', unlock, true);
+    };
+  }, [applyMediaSettings, notePlayError]);
+
+  // 把真实媒体状态报到本地 API，方便排查“有画面没声音/双音轨”问题。
+  useEffect(() => {
+    if (!visible) {
+      return;
+    }
+    const read = (media: HTMLMediaElement | null) =>
+      media
+        ? {
+            src: (media.currentSrc || media.getAttribute('src') || '').slice(-120),
+            paused: media.paused,
+            muted: media.muted,
+            volume: media.volume,
+            currentTime: Math.round(media.currentTime * 1000) / 1000,
+            readyState: media.readyState,
+            error: media.error ? media.error.code : null,
+            audioBytes: (media as HTMLMediaElement & { webkitAudioDecodedByteCount?: number })
+              .webkitAudioDecodedByteCount,
+          }
+        : null;
+    const report = () => {
+      const video = videoRef.current;
+      const audio = audioRef.current;
+      const drift =
+        video && audio ? Math.round((audio.currentTime - video.currentTime) * 1000) / 1000 : null;
+      const foreign = Array.from(document.querySelectorAll<HTMLMediaElement>('video, audio'))
+        .filter((media) => !media.closest('#bili-skin-video-host, #bili-skin-hud'))
+        .map((media) => ({
+          id: media.id,
+          className: String(media.className).slice(0, 80),
+          src: (media.currentSrc || media.getAttribute('src') || '').slice(0, 160),
+          paused: media.paused,
+          muted: media.muted,
+          volume: media.volume,
+          readyState: media.readyState,
+        }));
+      void api
+        .diagnostics({
+          at: Date.now(),
+          visible,
+          mode: info?.mode,
+          quality: info?.quality,
+          bvid: info?.bvid,
+          playing,
+          settingsMuted: settings.muted,
+          stateMuted: muted,
+          volume,
+          drift,
+          audioBlocked,
+          mediaError: mediaErrorRef.current,
+          video: read(video),
+          audio: read(audio),
+          foreign: foreign.slice(0, 12),
+        })
+        .catch(() => undefined);
+    };
+    report();
+    const timer = window.setInterval(report, 2000);
+    return () => window.clearInterval(timer);
+  }, [api, visible, info, playing, settings.muted, muted, volume, audioBlocked]);
+
   // 旧版 douyinhelper/bilibilihelper 注入的 #bilibili-background-video 会盖住我们的视频。
   useEffect(() => {
     if (!visible) {
@@ -361,11 +457,16 @@ export function Hud({ config, videoHost }: HudProps) {
     }
 
     if (settingsRef.current.autoplay && visibleRef.current) {
-      void video.play()?.catch(() => undefined);
+      void video.play()?.catch((error) => {
+        // VS Code/Chromium 可能阻止带声音的自动播放；提醒用户点一下。
+        if (settingsRef.current.muted === false) {
+          notePlayError(error);
+        }
+      });
     }
 
     return () => video.removeEventListener('loadedmetadata', onMetadata);
-  }, [srcUrl, applyMediaSettings]);
+  }, [srcUrl, applyMediaSettings, notePlayError]);
 
   useEffect(() => {
     if (videoRef.current) {
@@ -448,10 +549,10 @@ export function Hud({ config, videoHost }: HudProps) {
       }
       audio.playbackRate = 1;
       if (audio.paused) {
-        void audio.play().catch(() => undefined);
+        void audio.play().then(() => setAudioBlocked(false)).catch(notePlayError);
       }
     },
-    [applyMediaSettings],
+    [applyMediaSettings, notePlayError],
   );
 
   // timeupdate 只有 ~4Hz，额外用 250ms 轮询兜住漂移/暂停边界。
@@ -831,8 +932,21 @@ export function Hud({ config, videoHost }: HudProps) {
     }
     // 用户点击是手势，确保此时把静音/音量重新应用一次再 play，避免自动播放阶段被静音后一直无声。
     applyMediaSettings();
+    const audio = audioRef.current;
+    // DASH 情况下 video 可能已经在播、但独立 audio 被自动播放策略挡住；
+    // 这时第一次点播放键应该先解锁声音，而不是把 video 暂停掉。
+    if (!video.paused && audio && audio.paused && !mutedRef.current) {
+      void audio.play().then(() => setAudioBlocked(false)).catch(notePlayError);
+      return;
+    }
     if (video.paused) {
-      void video.play().catch((error) => setError(`播放失败：${toMessage(error)}`));
+      void video
+        .play()
+        .then(() => setAudioBlocked(false))
+        .catch((error) => {
+          notePlayError(error);
+          setError(`播放失败：${toMessage(error)}`);
+        });
     } else {
       video.pause();
       audioRef.current?.pause();
@@ -1021,7 +1135,10 @@ export function Hud({ config, videoHost }: HudProps) {
           style={{ display: 'none' }}
           onLoadedMetadata={() => syncAudio(true)}
           onCanPlay={() => syncAudio(true)}
-          onError={() => undefined}
+          onError={() => {
+            mediaErrorRef.current = 'audio element error';
+            setAudioBlocked(true);
+          }}
         />
       ) : null}
       <div className="bili-dim" />
@@ -1136,6 +1253,12 @@ export function Hud({ config, videoHost }: HudProps) {
                     if (audioRef.current) {
                       audioRef.current.muted = next;
                       audioRef.current.volume = volumeRef.current;
+                      if (!next) {
+                        void audioRef.current.play().then(() => setAudioBlocked(false)).catch(notePlayError);
+                      }
+                    }
+                    if (!next && videoRef.current && !videoRef.current.paused) {
+                      void videoRef.current.play().then(() => setAudioBlocked(false)).catch(notePlayError);
                     }
                   }}
                 >
@@ -1305,6 +1428,12 @@ export function Hud({ config, videoHost }: HudProps) {
               ) : null}
 
               {notice ? <div className="bili-alert bili-alert-warning">{notice}</div> : null}
+
+              {audioBlocked ? (
+                <div className="bili-alert bili-alert-warning">
+                  VS Code 阻止了声音自动播放，点一下画面或喇叭图标即可开启声音
+                </div>
+              ) : null}
 
               <div className="bp-flex bp-items-center bp-gap-2 bili-divider-t bp-pt-2">
                 <span className={`bili-dot ${online ? 'bili-dot-online' : 'bili-dot-offline'}`} />

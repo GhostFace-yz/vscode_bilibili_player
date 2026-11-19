@@ -52,6 +52,14 @@ export class SkinApi {
     return this.request<PlayInfo>(`/api/play?${params.toString()}`);
   }
 
+  diagnostics(payload: unknown): Promise<{ ok: boolean }> {
+    return this.request<{ ok: boolean }>('/api/diagnostics', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+  }
+
   loginQr(): Promise<LoginQr> {
     return this.request<LoginQr>('/api/login/qr');
   }
