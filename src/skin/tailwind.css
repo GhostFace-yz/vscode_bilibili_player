@@ -3,9 +3,10 @@
 /*
  * HUD 的所有颜色都从当前 VS Code 主题的 --vscode-* 变量派生。
  * 只有 B 站大会员标签保留品牌粉（.bili-vip）。
- * 变量挂在 body 上：HUD 和 Radix Portal（也挂在 body）都能继承。
+ * 变量挂在 .monaco-workbench 上：HUD、视频层和 Radix Portal 都在其内部，才能继承。
  */
-body {
+.monaco-workbench,
+#bili-skin-hud {
   --bili-font: var(--vscode-font-family, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif);
   --bili-fg: var(--vscode-foreground, #cccccc);
   --bili-fg-muted: var(--vscode-descriptionForeground, #9d9d9d);
@@ -644,6 +645,11 @@ body {
   outline: none;
   appearance: none;
   -webkit-appearance: none;
+}
+
+#bili-skin-hud .bili-volume-range {
+  flex: 0 0 64px;
+  width: 64px;
 }
 
 #bili-skin-hud .bili-range::-webkit-slider-thumb {

@@ -4,7 +4,7 @@
 
 把 B 站视频铺在 VS Code 工作台最底层：视频只在编辑区背后播放，侧边栏/终端/状态栏保持原生遮挡，右下角悬浮控制条——写代码和看视频真正在同一个画面里，而不是挤一个侧边栏。
 
-> v0.4.0：工作台注入、直连播放、扫码登录、React + Tailwind HUD、主题自适应配色、shadcn Select/Button、GSAP morph 动画、登录后刷新清晰度、上下集切换，已在 macOS / VS Code 1.147 实测。包管理工具为 **pnpm**。
+> v0.4.1：工作台注入、直连播放、扫码登录、React + Tailwind HUD、主题自适应配色、shadcn Select/Button、GSAP morph 动画、登录后刷新清晰度、上下集切换，已在 macOS / VS Code 1.147 实测。包管理工具为 **pnpm**。
 
 ## 功能
 
@@ -12,7 +12,7 @@
 - **直连播放**：≤720P 用 B 站 mp4 durl；1080P/1080P+ 自动切到 DASH 视频流 + 独立音轨，`<video>`/`<audio>` 原生播放并同步，支持播放/暂停/进度/音量
 - **扫码登录**：HUD 内生成二维码，Cookie 存 VS Code `SecretStorage`；未登录也可播放 480P/720P（取决于视频）
 - **HUD 控制**：播放/暂停、进度、音量、静音、清晰度、铺满方式、透明度、模糊、暗化、换 BV、收起、隐藏
-- **跟随 VS Code 主题**：HUD、下拉、按钮、提示、弹窗全部由当前主题的 `--vscode-*` 颜色变量驱动，切换主题即时生效；只有「大会员」标签保留 B 站粉
+- **跟随 VS Code 主题**：HUD、视频层、下拉、按钮、提示、弹窗全部由当前主题的 `--vscode-*` 颜色变量驱动（变量在 `.monaco-workbench` 上，HUD 和 Portal 都挂在其中），切换主题即时生效；只有「大会员」标签保留 B 站粉
 - **视频只铺编辑区**：视频层跟随编辑器内容区域（侧边栏/终端/聊天栏会正常遮挡），HUD 也贴在编辑区右下角
 - **登录后刷新清晰度**：扫码登录成功后自动重拉 playurl，清晰度列表与当前画质随之更新；也可点刷新按钮手动更新
 - **上下集切换**：支持多 P 视频和 B 站合集/season，HUD 显示「第 X/Y 集」、上一集/下一集和选集下拉
@@ -43,7 +43,7 @@ pnpm run compile     # 构建扩展 + 皮肤 + Tailwind 到 dist/
 pnpm run vsix
 ```
 
-生成 `vscode-bilibili-player-0.4.0.vsix`，然后在 VS Code 扩展面板右上角 `...` → **从 VSIX 安装**，重载窗口后执行 `B站皮肤: 应用皮肤`。
+生成 `vscode-bilibili-player-0.4.1.vsix`，然后在 VS Code 扩展面板右上角 `...` → **从 VSIX 安装**，重载窗口后执行 `B站皮肤: 应用皮肤`。
 
 ### 为什么 `pnpm run compile` 后“没有效果”？
 

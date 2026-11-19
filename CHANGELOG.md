@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.4.1
+
+- 修复主题变量作用域：VS Code 把 `--vscode-*` 定义在 `.monaco-workbench` 上，之前 HUD/视频层/Radix Portal 挂在 `body`，实际一直用回退色；现在全部挂到 workbench 内部，Portal 也移入 HUD，Dracula 等主题的颜色会真正生效
+- 播放/暂停、`loadedmetadata`、`play` 时重新应用 `muted`/`volume`，修复自动播放阶段被浏览器静音后一直无声；音量滑杆固定 64px，不再挤占清晰度/铺满控件，并持久化静音状态
+- 已重新同步 workbench 校验和；若仍看到「Code 安装似乎损坏」，需要完全退出并重新打开 VS Code（主进程会缓存启动时的校验结果，仅 Reload Window 不一定刷新）
+
 ## 0.4.0
 
 - HUD 全量跟随当前 VS Code 主题：面板、按钮、输入框、下拉、滑杆、提示、弹窗均使用 `--vscode-*` 颜色变量，切换主题实时生效；只有「大会员」标签保留 B 站粉

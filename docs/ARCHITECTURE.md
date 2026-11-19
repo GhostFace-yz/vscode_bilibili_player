@@ -2,7 +2,7 @@
 
 目标：视频不是挤在侧边栏或标签页里，而是铺在 VS Code 工作台**最底层**，代码浮在视频之上。
 
-v0.4.0 已按「工作台注入 + 直连播放」实现，并在 macOS + VS Code 1.147.0 上实测。
+v0.4.1 已按「工作台注入 + 直连播放」实现，并在 macOS + VS Code 1.147.0 上实测。
 
 ## 1. 路线选择
 
@@ -147,7 +147,7 @@ Cookie 只存本地 `SecretStorage`；HUD 只拿到 `{ name, face, vip }`，不�
 
 ## 10. 主题适配与动画
 
-HUD 的颜色不写死，统一在 `tailwind.css` 的 `body` 上定义一层 `--bili-*` 变量，值全部引用 VS Code 当前主题的 `--vscode-*`：
+HUD 的颜色不写死，统一在 `tailwind.css` 的 `.monaco-workbench` 上定义一层 `--bili-*` 变量，值全部引用 VS Code 当前主题的 `--vscode-*`。注意：VS Code 把主题变量定义在 `.monaco-workbench` 而不是 `body`，所以 HUD/视频层必须挂到 workbench 内部，Radix Portal 也必须指定 HUD 作为容器：
 
 | 用途 | 变量 |
 | --- | --- |
@@ -159,7 +159,7 @@ HUD 的颜色不写死，统一在 `tailwind.css` 的 `body` 上定义一层 `--
 | 焦点/选中 | `focusBorder` / `list-activeSelection*` / `list-highlightForeground` |
 | 错误/警告 | `inputValidation-error*` / `inputValidation-warning*` / `errorForeground` |
 
-因为 HUD 和 Radix Portal 都挂在 `body` 下，变量可直接继承；主题切换时浏览器会实时重算，无需重载。唯一保留 B 站粉的是「大会员」标签（`.bili-vip`）。
+因为 HUD、视频层和 Radix Portal 都在 `.monaco-workbench` 内部，变量可直接继承；主题切换时浏览器会实时重算，无需重载。唯一保留 B 站粉的是「大会员」标签（`.bili-vip`）。
 
 收起/展开不使用简单的 fade：面板内容先 `filter: blur()`，面板以右下角为原点从胶囊矩形 `scale` 到完整尺寸，结束后清掉模糊；收起是相反过程，切换成胶囊后再解除模糊。
 

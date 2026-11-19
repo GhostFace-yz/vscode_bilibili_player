@@ -108,6 +108,20 @@ export function Hud({ config, videoHost }: HudProps) {
   const volumeRef = useRef(volume);
   volumeRef.current = volume;
 
+  // 确保媒体元素的声音状态与 HUD 一致（自动播放/重新挂载时尤其重要）
+  const applyMediaSettings = useCallback(() => {
+    const video = videoRef.current;
+    const audio = audioRef.current;
+    if (video) {
+      video.muted = mutedRef.current;
+      video.volume = volumeRef.current;
+    }
+    if (audio) {
+      audio.muted = mutedRef.current;
+      audio.volume = volumeRef.current;
+    }
+  }, []);
+
   const requestedKey = useRef('');
   const backupIndex = useRef(0);
   const pendingSeek = useRef(0);
@@ -286,8 +300,7 @@ export function Hud({ config, videoHost }: HudProps) {
       return;
     }
 
-    video.muted = mutedRef.current;
-    video.volume = volumeRef.current;
+    applyMediaSettings();
     video.setAttribute('referrerpolicy', 'no-referrer');
     video.load();
 
@@ -308,7 +321,7 @@ export function Hud({ config, videoHost }: HudProps) {
     }
 
     return () => video.removeEventListener('loadedmetadata', onMetadata);
-  }, [srcUrl]);
+  }, [srcUrl, applyMediaSettings]);
 
   useEffect(() => {
     if (videoRef.current) {
@@ -335,6 +348,7 @@ export function Hud({ config, videoHost }: HudProps) {
     if (!video || !audio || !audio.getAttribute('src')) {
       return;
     }
+    applyMediaSettings();
     if (audio.readyState < 1) {
       audio.addEventListener('loadedmetadata', () => sync(true), { once: true });
       return;
@@ -351,7 +365,7 @@ export function Hud({ config, videoHost }: HudProps) {
     } else {
       void audio.play().catch(() => undefined);
     }
-  }, []);
+  }, [applyMediaSettings]);
 
   // HUD 也要贴住编辑区右下角（真正定位的是 main.tsx 创建的 #bili-skin-hud 宿主）
   useEffect(() => {
@@ -714,8 +728,10 @@ export function Hud({ config, videoHost }: HudProps) {
     if (!video) {
       return;
     }
+    // 用户点击是手势，确保此时把静音/音量重新应用一次再 play，避免自动播放阶段被静音后一直无声。
+    applyMediaSettings();
     if (video.paused) {
-      void video.play().catch(() => undefined);
+      void video.play().catch((error) => setError(`播放失败：${toMessage(error)}`));
     } else {
       video.pause();
     }
@@ -857,6 +873,7 @@ export function Hud({ config, videoHost }: HudProps) {
           playsInline
           preload="auto"
           onLoadedMetadata={(event) => {
+            applyMediaSettings();
             setDuration(event.currentTarget.duration || 0);
             syncAudio(true);
           }}
@@ -867,6 +884,7 @@ export function Hud({ config, videoHost }: HudProps) {
             }
           }}
           onPlay={() => {
+            applyMediaSettings();
             setPlaying(true);
             syncAudio(true);
           }}
@@ -989,14 +1007,26 @@ export function Hud({ config, videoHost }: HudProps) {
                   aria-label={muted ? '取消静音' : '静音'}
                   onClick={() => {
                     const next = !muted;
+                    if (!next && volumeRef.current === 0) {
+                      setVolume(0.8);
+                      volumeRef.current = 0.8;
+                    }
                     setMuted(next);
                     updateSettings({ muted: next });
+                    if (videoRef.current) {
+                      videoRef.current.muted = next;
+                      videoRef.current.volume = volumeRef.current;
+                    }
+                    if (audioRef.current) {
+                      audioRef.current.muted = next;
+                      audioRef.current.volume = volumeRef.current;
+                    }
                   }}
                 >
                   <Volume width={15} height={15} />
                 </button>
                 <input
-                  className="bili-range bp-w-[64px]"
+                  className="bili-range bili-volume-range"
                   type="range"
                   min={0}
                   max={1}
@@ -1005,8 +1035,19 @@ export function Hud({ config, videoHost }: HudProps) {
                   aria-label="音量"
                   onChange={(event) => {
                     const next = Number(event.target.value);
+                    const nextMuted = next === 0;
                     setVolume(next);
-                    setMuted(next === 0);
+                    volumeRef.current = next;
+                    setMuted(nextMuted);
+                    updateSettings({ muted: nextMuted });
+                    if (videoRef.current) {
+                      videoRef.current.volume = next;
+                      videoRef.current.muted = nextMuted;
+                    }
+                    if (audioRef.current) {
+                      audioRef.current.volume = next;
+                      audioRef.current.muted = nextMuted;
+                    }
                   }}
                 />
                 <div className="bp-ml-auto bp-flex bp-items-center bp-gap-1.5">
