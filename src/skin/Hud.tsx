@@ -1916,7 +1916,7 @@ export function Hud({ config, videoHost }: HudProps) {
               </button>
               <button
                 type="button"
-                className="bili-icon-btn bili-mini-btn"
+                className="bili-play-btn bili-play-btn-small bili-mini-btn"
                 title="展开控制条"
                 aria-label="展开控制条"
                 onClick={() => {
