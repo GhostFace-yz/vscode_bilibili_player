@@ -1,7 +1,5 @@
 import * as http from 'node:http';
 import { PORT_RANGE } from '../shared/types';
-export const API_VERSION = 2;
-
 import type {
   LoginPoll,
   LoginQr,
@@ -10,6 +8,8 @@ import type {
   StatePatch,
   VideoRef,
 } from '../shared/types';
+
+export const API_VERSION = 2;
 
 export interface ApiServerDeps {
   token: string;
