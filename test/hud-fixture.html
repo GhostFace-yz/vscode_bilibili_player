@@ -5,48 +5,131 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Bilibili Skin HUD Fixture</title>
   <style>
+    :root {
+      color-scheme: dark;
+      --vscode-font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      --vscode-foreground: #cccccc;
+      --vscode-descriptionForeground: #9d9d9d;
+      --vscode-disabledForeground: #6f6f6f;
+      --vscode-editor-background: #1e1e1e;
+      --vscode-sideBar-background: #252526;
+      --vscode-editorWidget-background: #252526;
+      --vscode-widget-border: #454545;
+      --vscode-panel-border: #3c3c3c;
+      --vscode-widget-shadow: #000000;
+      --vscode-list-hoverBackground: #2a2d2e;
+      --vscode-list-activeSelectionBackground: #04395e;
+      --vscode-list-activeSelectionForeground: #ffffff;
+      --vscode-list-highlightForeground: #2aaaff;
+      --vscode-focusBorder: #007fd4;
+      --vscode-textLink-foreground: #3794ff;
+      --vscode-button-background: #0e639c;
+      --vscode-button-foreground: #ffffff;
+      --vscode-button-hoverBackground: #1177bb;
+      --vscode-button-secondaryBackground: #3a3d41;
+      --vscode-button-secondaryForeground: #ffffff;
+      --vscode-button-secondaryHoverBackground: #45494e;
+      --vscode-input-background: #3c3c3c;
+      --vscode-input-foreground: #cccccc;
+      --vscode-input-border: #3c3c3c;
+      --vscode-input-placeholderForeground: #a6a6a6;
+      --vscode-inputValidation-errorBackground: #5a1d1d;
+      --vscode-inputValidation-errorBorder: #be1100;
+      --vscode-errorForeground: #f48771;
+      --vscode-inputValidation-warningBackground: #352a05;
+      --vscode-inputValidation-warningBorder: #b89500;
+      --vscode-editorWarning-foreground: #cca700;
+      --vscode-editorStickyScroll-background: #1e1e1e;
+      --vscode-editorStickyScroll-border: #1e1e1e;
+      --vscode-editorStickyScrollGutter-background: #1e1e1e;
+      --vscode-testing-iconPassed: #73c991;
+      --vscode-testing-iconFailed: #f14c4c;
+      --vscode-editor-selectionBackground: #264f78;
+    }
+
+    :root[data-theme='light'] {
+      color-scheme: light;
+      --vscode-foreground: #3b3b3b;
+      --vscode-descriptionForeground: #717171;
+      --vscode-disabledForeground: #8e8e8e;
+      --vscode-editor-background: #ffffff;
+      --vscode-sideBar-background: #f3f3f3;
+      --vscode-editorWidget-background: #f3f3f3;
+      --vscode-widget-border: #d4d4d4;
+      --vscode-panel-border: #e5e5e5;
+      --vscode-widget-shadow: rgba(0, 0, 0, 0.16);
+      --vscode-list-hoverBackground: #e8e8e8;
+      --vscode-list-activeSelectionBackground: #0060c0;
+      --vscode-list-activeSelectionForeground: #ffffff;
+      --vscode-list-highlightForeground: #0066bf;
+      --vscode-focusBorder: #0090f1;
+      --vscode-textLink-foreground: #006ab1;
+      --vscode-button-background: #005fb8;
+      --vscode-button-foreground: #ffffff;
+      --vscode-button-hoverBackground: #0258a8;
+      --vscode-button-secondaryBackground: #e5e5e5;
+      --vscode-button-secondaryForeground: #3b3b3b;
+      --vscode-button-secondaryHoverBackground: #cccccc;
+      --vscode-input-background: #ffffff;
+      --vscode-input-foreground: #3b3b3b;
+      --vscode-input-border: #cecece;
+      --vscode-input-placeholderForeground: #767676;
+      --vscode-inputValidation-errorBackground: #f2dede;
+      --vscode-inputValidation-errorBorder: #be1100;
+      --vscode-errorForeground: #a1260d;
+      --vscode-inputValidation-warningBackground: #fdf6d8;
+      --vscode-inputValidation-warningBorder: #b89500;
+      --vscode-editorWarning-foreground: #855b00;
+      --vscode-editorStickyScroll-background: #ffffff;
+      --vscode-editorStickyScroll-border: #ffffff;
+      --vscode-editorStickyScrollGutter-background: #ffffff;
+      --vscode-testing-iconPassed: #388a34;
+      --vscode-testing-iconFailed: #e51400;
+      --vscode-editor-selectionBackground: #add6ff;
+    }
+
     html, body {
       margin: 0;
       height: 100%;
-      background: #1e1e2e;
-      color: #cdd6f4;
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: var(--vscode-editor-background);
+      color: var(--vscode-foreground);
+      font-family: var(--vscode-font-family);
       overflow: hidden;
     }
     .monaco-workbench {
       display: flex;
       height: 100%;
-      background: #1e1e2e;
+      background: var(--vscode-editor-background);
     }
     .part.sidebar {
       width: 250px;
-      background: #181825;
+      background: var(--vscode-sideBar-background);
       padding: 14px 12px;
       font-size: 13px;
     }
     .part.sidebar .item {
       padding: 5px 10px;
       border-radius: 4px;
-      color: #a6adc8;
+      color: var(--vscode-descriptionForeground);
     }
     .part.sidebar .item.active {
-      background: #313244;
-      color: #cdd6f4;
+      background: var(--vscode-list-activeSelectionBackground);
+      color: var(--vscode-list-activeSelectionForeground);
     }
     .part.editor {
       flex: 1;
       display: flex;
       flex-direction: column;
-      background: #1e1e2e;
+      background: var(--vscode-editor-background);
     }
     .tabs-and-actions-container {
       height: 36px;
-      background: #181825;
+      background: var(--vscode-sideBar-background);
       display: flex;
       align-items: center;
       padding-left: 14px;
       font-size: 13px;
-      color: #cdd6f4;
+      color: var(--vscode-foreground);
     }
     .editor-group-container {
       flex: 1;
@@ -62,32 +145,53 @@
       display: flex;
     }
     .monaco-editor {
+      position: relative;
       flex: 1;
-      background: #1e1e2e;
+      background: var(--vscode-editor-background);
       padding: 16px 22px;
       font-family: 'SF Mono', Menlo, monospace;
       font-size: 14px;
       line-height: 1.7;
       white-space: pre;
-      color: #cdd6f4;
+      color: var(--vscode-foreground);
     }
     .monaco-editor .monaco-editor-background {
-      background: #1e1e2e;
+      background: var(--vscode-editor-background);
+    }
+    .sticky-widget {
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 46px;
+      z-index: 4;
+      padding: 12px 22px;
+      border-bottom: 1px solid var(--vscode-editorStickyScroll-border);
+      background: var(--vscode-editorStickyScroll-background);
+      font-size: 13px;
+      color: var(--vscode-descriptionForeground);
     }
     .statusbar {
       height: 24px;
-      background: #181825;
+      background: var(--vscode-sideBar-background);
     }
-    .token.keyword { color: #cba6f7; }
-    .token.string { color: #a6e3a1; }
-    .token.fn { color: #89b4fa; }
-    .token.comment { color: #6c7086; }
+    .token.keyword { color: #c586c0; }
+    .token.string { color: #ce9178; }
+    .token.fn { color: #dcdcaa; }
+    .token.comment { color: #6a9955; }
+
+    #test-output {
+      position: fixed;
+      left: -9999px;
+      top: 0;
+      white-space: pre;
+    }
   </style>
 </head>
 <body class="bili-skin-on">
   <div class="monaco-workbench">
     <div class="part sidebar">
-      <div style="color:#6c7086;font-size:11px;letter-spacing:.08em;margin-bottom:8px;">EXPLORER</div>
+      <div style="color:var(--vscode-descriptionForeground);font-size:11px;letter-spacing:.08em;margin-bottom:8px;">EXPLORER</div>
       <div class="item">src</div>
       <div class="item active">extension.ts</div>
       <div class="item">skin</div>
@@ -101,6 +205,7 @@
           <div class="editor-container">
             <div class="editor-instance">
               <div class="monaco-editor">
+                <div class="sticky-widget"><span class="sticky-line-content">10 &lt;script setup lang="ts"&gt;</span></div>
                 <div class="monaco-editor-background"></div><span class="token keyword">import</span> { window } <span class="token keyword">from</span> <span class="token string">'vscode'</span>;
 
 <span class="token comment">// Bilibili skin: video lives behind the editor.</span>
@@ -127,10 +232,164 @@
     </div>
   </div>
 
+  <pre id="test-output"></pre>
+
+  <script>
+    const params = new URLSearchParams(location.search);
+    const theme = params.get('theme') === 'light' ? 'light' : 'dark';
+    document.documentElement.dataset.theme = theme;
+
+    const wantLogin = params.get('login') === '1';
+    const wantCollapsed = params.get('collapsed') === '1';
+    const wantError = params.get('error') === '1';
+
+    const svg = (body) => 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(body);
+    const avatar = svg(
+      '<svg xmlns="http://www.w3.org/2000/svg" width="40" height="40"><circle cx="20" cy="20" r="20" fill="#3a3d41"/><text x="20" y="26" text-anchor="middle" font-size="16" fill="#fff">三</text></svg>',
+    );
+    let qrCells = '';
+    for (let y = 0; y < 22; y += 1) {
+      for (let x = 0; x < 22; x += 1) {
+        if ((x * 7 + y * 11 + x * y) % 5 < 2) {
+          qrCells += `<rect x="${x * 9 + 10}" y="${y * 9 + 10}" width="8" height="8"/>`;
+        }
+      }
+    }
+    const qrImage = svg(
+      `<svg xmlns="http://www.w3.org/2000/svg" width="220" height="220"><rect width="220" height="220" fill="#fff"/><g fill="#111">${qrCells}</g></svg>`,
+    );
+
+    const state = {
+      visible: true,
+      openLogin: wantLogin,
+      video: { bvid: 'BV1AosS6yEX9' },
+      settings: {
+        opacity: 0.38,
+        blur: 0,
+        dim: 0.04,
+        fit: 'cover',
+        muted: true,
+        autoplay: false,
+        quality: 80,
+      },
+      loggedIn: true,
+      user: { mid: 1, name: '三星堆机甲战士', face: avatar, vip: true },
+      authRevision: 1,
+    };
+
+    const info = {
+      bvid: 'BV1AosS6yEX9',
+      cid: 1,
+      page: 1,
+      title: '老戴《侠盗猎车手 6》初见开荒全实况流程解说',
+      owner: '老戴在此',
+      cover: '',
+      duration: 1470,
+      quality: 112,
+      qualities: [
+        { qn: 16, desc: '360P' },
+        { qn: 32, desc: '480P' },
+        { qn: 64, desc: '720P' },
+        { qn: 74, desc: '720P60' },
+        { qn: 80, desc: '1080P' },
+        { qn: 112, desc: '1080P+' },
+      ],
+      url: '',
+      backupUrls: [],
+      mode: 'native',
+      episodes: [
+        { bvid: 'BV1AosS6yEX9', cid: 1, page: 1, title: '【实况】全流程' },
+        { bvid: 'BV1AosS6yEX9', cid: 2, page: 2, title: '第二集 · 抢银行' },
+        { bvid: 'BV1AosS6yEX9', cid: 3, page: 3, title: '第三集 · 飞车追逐' },
+      ],
+      episodeIndex: 0,
+    };
+
+    const json = (value, status = 200) =>
+      Promise.resolve(
+        new Response(JSON.stringify(value), {
+          status,
+          headers: { 'content-type': 'application/json' },
+        }),
+      );
+
+    window.fetch = (input, init) => {
+      const url = typeof input === 'string' ? input : input.url;
+      const path = new URL(url).pathname;
+      if (path.endsWith('/api/health')) {
+        return json({ ok: true, apiVersion: 2, version: 'fixture' });
+      }
+      if (path.endsWith('/api/state')) {
+        if (init?.method === 'POST') {
+          return json(state);
+        }
+        return json(state);
+      }
+      if (path.endsWith('/api/play')) {
+        if (wantError) {
+          return json({ error: '视频加载失败：CDN 链接可能已过期，请点击重试' }, 500);
+        }
+        return json(info);
+      }
+      if (path.endsWith('/api/login/qr')) {
+        return json({
+          key: 'fixture-key',
+          url: 'https://example.com/qr',
+          image: qrImage,
+          expiresAt: Date.now() + 180000,
+        });
+      }
+      if (path.endsWith('/api/login/poll')) {
+        return json({ status: 'waiting' });
+      }
+      if (path.endsWith('/api/logout')) {
+        return json({ ok: true });
+      }
+      return json({ error: 'not found' }, 404);
+    };
+  </script>
   <script>
     window.__BILI_SKIN_CONFIG__ = { port: 17321, token: 'dev-token', version: 'dev' };
   </script>
   <link rel="stylesheet" href="../dist/skin.css" />
   <script src="../dist/skin.js"></script>
+  <script>
+    function rectInfo(el) {
+      if (!el) return null;
+      const r = el.getBoundingClientRect();
+      return { x: Math.round(r.x), y: Math.round(r.y), width: Math.round(r.width), height: Math.round(r.height) };
+    }
+
+    setTimeout(() => {
+      if (wantCollapsed) {
+        document.querySelector('button[title="收起"]')?.click();
+      }
+    }, 700);
+
+    setTimeout(() => {
+      const panel = document.querySelector('.bili-panel');
+      const panelStyle = panel ? getComputedStyle(panel) : null;
+      const sticky = document.querySelector('.sticky-widget');
+      const vip = document.querySelector('.bili-vip');
+      const dim = document.querySelector('.bili-dim');
+      const modal = document.querySelector('.bili-modal');
+      const qr = document.querySelector('.bili-qr-image');
+      const output = {
+        theme,
+        panelBg: panelStyle?.backgroundColor,
+        panelColor: panelStyle?.color,
+        panelRect: rectInfo(panel),
+        pillRect: rectInfo(document.querySelector('.bili-pill')),
+        stickyBg: sticky ? getComputedStyle(sticky).backgroundColor : null,
+        dimBg: dim ? getComputedStyle(dim).backgroundColor : null,
+        vipColor: vip ? getComputedStyle(vip).color : null,
+        modalBg: modal ? getComputedStyle(modal).backgroundColor : null,
+        qrRect: rectInfo(qr),
+        modalRect: rectInfo(modal),
+      };
+      document.getElementById('test-output').textContent = JSON.stringify(output);
+      document.title = 'FIXTURE ' + JSON.stringify(output);
+    }, 2600);
+  </script>
 </body>
 </html>

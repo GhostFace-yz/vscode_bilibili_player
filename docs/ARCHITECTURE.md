@@ -2,7 +2,7 @@
 
 目标：视频不是挤在侧边栏或标签页里，而是铺在 VS Code 工作台**最底层**，代码浮在视频之上。
 
-v0.3.0 已按「工作台注入 + 直连播放」实现，并在 macOS + VS Code 1.147.0 上实测。
+v0.4.0 已按「工作台注入 + 直连播放」实现，并在 macOS + VS Code 1.147.0 上实测。
 
 ## 1. 路线选择
 
@@ -89,8 +89,10 @@ body.bili-skin-on .monaco-workbench .monaco-editor .margin {
 ```
 
 - VS Code 1.147 的 `.monaco-grid-view` 默认是 `rgb(25,26,27)` 不透明全屏容器，不覆盖它视频就会被完全挡住（调试时踩过）
-- 侧边栏/状态栏/标签栏用 `color-mix(... 60%, transparent)` 保留主题色与可读性
-- 视频层固定全屏、`object-fit` 可调、`opacity`/`blur`/暗化层由 HUD 控制
+- 只有编辑区透明；侧边栏、终端、状态栏保留主题背景，正常遮挡视频
+- 视频层跟随 `.part.editor > .content` 的矩形定位（见第 11 节），`object-fit` 可调，`opacity`/`blur` 由 HUD 控制
+- 暗化层叠加的是 `--vscode-editor-background`，100% 时与未开皮肤时的编辑区颜色一致，而不是黑色
+- 吸顶滚动（sticky scroll）的 `editorStickyScroll` 背景、边框和阴影统一置为透明，否则滚动到方法内部时会在编辑区顶部盖出一条横带
 - 视频层 `pointer-events: none`，不影响代码点击
 
 ## 6. 播放链路
@@ -143,11 +145,29 @@ Cookie 只存本地 `SecretStorage`；HUD 只拿到 `{ name, face, vip }`，不�
 - 端口发现：HUD 从 config 的端口开始，失败后扫描 17321–17330，适配多窗口
 - 登录态失效时 HUD 显示未登录，不影响未登录播放
 
-## 10. 视频范围与 HUD 定位
+## 10. 主题适配与动画
+
+HUD 的颜色不写死，统一在 `tailwind.css` 的 `body` 上定义一层 `--bili-*` 变量，值全部引用 VS Code 当前主题的 `--vscode-*`：
+
+| 用途 | 变量 |
+| --- | --- |
+| 文字 | `foreground` / `descriptionForeground` / `disabledForeground` |
+| 面板背景 | `editorWidget-background`（94% 不透明 + backdrop blur） |
+| 边框 | `widget-border` / `panel-border` |
+| 按钮 | `button-background` / `button-foreground` / `button-hoverBackground` / `button-secondary*` |
+| 输入/下拉 | `input-background` / `input-foreground` / `input-border` / `dropdown-*` |
+| 焦点/选中 | `focusBorder` / `list-activeSelection*` / `list-highlightForeground` |
+| 错误/警告 | `inputValidation-error*` / `inputValidation-warning*` / `errorForeground` |
+
+因为 HUD 和 Radix Portal 都挂在 `body` 下，变量可直接继承；主题切换时浏览器会实时重算，无需重载。唯一保留 B 站粉的是「大会员」标签（`.bili-vip`）。
+
+收起/展开不使用简单的 fade：面板内容先 `filter: blur()`，面板以右下角为原点从胶囊矩形 `scale` 到完整尺寸，结束后清掉模糊；收起是相反过程，切换成胶囊后再解除模糊。
+
+## 11. 视频范围与 HUD 定位
 
 视频层不是全窗口，而是跟随 `.monaco-workbench .part.editor > .content` 的 `getBoundingClientRect()`，通过 `left/top/width/height` 固定定位；`ResizeObserver` + 每秒兜底测量处理侧边栏、终端、聊天栏、窗口缩放。HUD 宿主 `#bili-skin-hud` 的 `right/bottom` 也按编辑区计算，贴在编辑区右下角。侧边栏/面板/状态栏恢复主题不透明背景，自然遮挡视频。
 
-## 11. 注入生命周期
+## 12. 注入生命周期
 
 - **应用**：确认弹窗 → 备份 `workbench.html` / `product.json` 到 `globalStorage/workbench-backups/<version>/` → 重写 CSP → 注入 → 写 3 个资源 → 更新校验和 → 可选立即重载
 - **更新皮肤**：重复应用会先剥离旧块（幂等），换 `?v=`，重新写入
@@ -155,7 +175,7 @@ Cookie 只存本地 `SecretStorage`；HUD 只拿到 `{ name, face, vip }`，不�
 - **VS Code 升级后**：HTML 被覆盖，`isPatched` 返回 false；用户重新应用即可。旧资源文件残留无害，会被覆盖
 - **旧手动补丁**：检测 `#bilibili-background-video`（之前注入 workbench.js 的后台视频），显示期间 `display:none`，隐藏时恢复
 
-## 12. 安全与合规
+## 13. 安全与合规
 
 - 只在用户显式执行「应用皮肤」时修改安装目录，首次弹确认
 - 修改前备份，一键还原

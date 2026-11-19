@@ -16,7 +16,7 @@ export function getSettings(): BilibiliPlayerSettings {
     defaultVideo: config.get<string>('defaultVideo', '').trim(),
     opacity: clamp(config.get<number>('opacity', 0.5), 0.05, 1),
     blur: clamp(config.get<number>('blur', 2), 0, 40),
-    dim: clamp(config.get<number>('dim', 0.25), 0, 0.8),
+    dim: clamp(config.get<number>('dim', 0.25), 0, 1),
     fit: normalizeFit(config.get<string>('fit', 'cover')),
     muted: config.get<boolean>('muted', true),
     autoplay: config.get<boolean>('autoplay', true),
@@ -41,7 +41,7 @@ export async function updateSkinSettings(patch: Partial<SkinSettings>): Promise<
     updates.push(config.update('blur', clamp(patch.blur, 0, 40), vscode.ConfigurationTarget.Global));
   }
   if (typeof patch.dim === 'number') {
-    updates.push(config.update('dim', clamp(patch.dim, 0, 0.8), vscode.ConfigurationTarget.Global));
+    updates.push(config.update('dim', clamp(patch.dim, 0, 1), vscode.ConfigurationTarget.Global));
   }
   if (patch.fit && FIT_MODES.includes(patch.fit)) {
     updates.push(config.update('fit', patch.fit, vscode.ConfigurationTarget.Global));

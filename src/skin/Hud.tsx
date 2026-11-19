@@ -1,4 +1,12 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+} from 'react';
 import { createPortal } from 'react-dom';
 import { gsap } from 'gsap';
 import { useGSAP } from '@gsap/react';
@@ -26,6 +34,7 @@ import type {
 } from '../shared/types';
 import { DEFAULT_SKIN_SETTINGS } from '../shared/types';
 import { SkinApi } from './api';
+import { Button } from './components/ui/button';
 import {
   Select,
   SelectContent,
@@ -55,6 +64,11 @@ export function Hud({ config, videoHost }: HudProps) {
   const pillRef = useRef<HTMLDivElement | null>(null);
   const modalOverlayRef = useRef<HTMLDivElement | null>(null);
   const modalRef = useRef<HTMLDivElement | null>(null);
+  const panelContentRef = useRef<HTMLDivElement | null>(null);
+  const pillContentRef = useRef<HTMLDivElement | null>(null);
+  const morphRef = useRef<gsap.core.Timeline | null>(null);
+  const pendingExpandFrom = useRef<{ width: number; height: number } | null>(null);
+  const pendingCollapseIn = useRef(false);
 
   const [state, setState] = useState<SkinState | null>(null);
   const [settings, setSettings] = useState<SkinSettings>(DEFAULT_SKIN_SETTINGS);
@@ -453,23 +467,6 @@ export function Hud({ config, videoHost }: HudProps) {
 
   const { contextSafe } = useGSAP(
     () => {
-      const target = open ? panelRef.current : pillRef.current;
-      if (!target) {
-        return;
-      }
-      gsap.from(target, {
-        autoAlpha: 0,
-        y: open ? 10 : 6,
-        scale: open ? 0.97 : 0.95,
-        duration: REDUCED_MOTION ? 0 : 0.22,
-        ease: 'power2.out',
-      });
-    },
-    { scope: hudRootRef, dependencies: [open], revertOnUpdate: true },
-  );
-
-  useGSAP(
-    () => {
       if (!loginOpen) {
         return;
       }
@@ -488,20 +485,157 @@ export function Hud({ config, videoHost }: HudProps) {
     { scope: hudRootRef, dependencies: [loginOpen], revertOnUpdate: true },
   );
 
+  /**
+   * 胶囊 → 面板：先把面板压成胶囊大小并模糊内容，再放大到完整尺寸并解除模糊。
+   * 锚点在右下角，所以看起来是从胶囊里“长”出来。
+   */
+  const expandPanel = contextSafe(() => {
+    if (open) {
+      return;
+    }
+    if (REDUCED_MOTION || !pillRef.current) {
+      setOpen(true);
+      return;
+    }
+    // 用布局尺寸而不是 getBoundingClientRect：胶囊可能正在做缩放动画。
+    pendingExpandFrom.current = {
+      width: pillRef.current.offsetWidth,
+      height: pillRef.current.offsetHeight,
+    };
+    setOpen(true);
+  });
+
+  /**
+   * 面板 → 胶囊：内容先模糊，面板压缩到胶囊矩形，切换后胶囊由模糊变清晰。
+   */
   const collapsePanel = contextSafe(() => {
-    if (!panelRef.current || REDUCED_MOTION) {
+    if (!open) {
+      return;
+    }
+    const panel = panelRef.current;
+    const pill = pillRef.current;
+    if (!panel || !pill || REDUCED_MOTION) {
       setOpen(false);
       return;
     }
-    gsap.to(panelRef.current, {
-      autoAlpha: 0,
-      y: 8,
-      scale: 0.96,
-      duration: 0.16,
-      ease: 'power1.in',
-      onComplete: () => setOpen(false),
+    // offsetWidth/offsetHeight 不受当前 transform 影响，快速连续点击也不会算错目标比例。
+    const fromWidth = panel.offsetWidth;
+    const fromHeight = panel.offsetHeight;
+    const toWidth = pill.offsetWidth;
+    const toHeight = pill.offsetHeight;
+    if (fromWidth < 1 || fromHeight < 1 || toWidth < 1 || toHeight < 1) {
+      setOpen(false);
+      return;
+    }
+
+    morphRef.current?.kill();
+    const content = panelContentRef.current;
+    const timeline = gsap.timeline({
+      onComplete: () => {
+        pendingCollapseIn.current = true;
+        setOpen(false);
+      },
     });
+    morphRef.current = timeline;
+
+    if (content) {
+      timeline.to(content, { filter: 'blur(9px)', opacity: 0.6, duration: 0.12, ease: 'power1.out' }, 0);
+      timeline.to(content, { opacity: 0, duration: 0.18, ease: 'power1.in' }, 0.16);
+    }
+    timeline.to(
+      panel,
+      {
+        scaleX: toWidth / fromWidth,
+        scaleY: toHeight / fromHeight,
+        transformOrigin: '100% 100%',
+        duration: 0.3,
+        ease: 'power3.inOut',
+      },
+      0.05,
+    );
   });
+
+  // 状态切换发生在 layout 阶段，先量目标尺寸再补动画，避免闪一帧。
+  useLayoutEffect(() => {
+    const panel = panelRef.current;
+    if (!panel) {
+      return;
+    }
+
+    if (open && pendingExpandFrom.current) {
+      const from = pendingExpandFrom.current;
+      pendingExpandFrom.current = null;
+      morphRef.current?.kill();
+      // 上一次收起可能留下了缩放 transform，先清掉才能量到完整尺寸。
+      gsap.set(panel, { clearProps: 'transform,transformOrigin' });
+      const width = panel.offsetWidth;
+      const height = panel.offsetHeight;
+      if (width < 1 || height < 1) {
+        return;
+      }
+
+      const content = panelContentRef.current;
+      gsap.set(panel, {
+        transformOrigin: '100% 100%',
+        scaleX: from.width / width,
+        scaleY: from.height / height,
+      });
+      if (content) {
+        gsap.set(content, { filter: 'blur(12px)', opacity: 0.5 });
+      }
+
+      const timeline = gsap.timeline({
+        onComplete: () => {
+          gsap.set(panel, { clearProps: 'transform,transformOrigin' });
+          if (content) {
+            gsap.set(content, { clearProps: 'filter,opacity' });
+          }
+        },
+      });
+      morphRef.current = timeline;
+      if (content) {
+        timeline.to(content, { filter: 'blur(5px)', opacity: 1, duration: 0.2, ease: 'power1.out' }, 0);
+        timeline.to(content, { filter: 'blur(0px)', duration: 0.26, ease: 'power2.out' }, 0.2);
+      }
+      timeline.to(panel, { scaleX: 1, scaleY: 1, duration: 0.44, ease: 'power3.out' }, 0);
+      return;
+    }
+
+    if (!open && pendingCollapseIn.current) {
+      pendingCollapseIn.current = false;
+      const pill = pillRef.current;
+      const content = pillContentRef.current;
+      if (!pill) {
+        return;
+      }
+      morphRef.current?.kill();
+      if (content) {
+        gsap.fromTo(
+          content,
+          { filter: 'blur(8px)', opacity: 0.4 },
+          {
+            filter: 'blur(0px)',
+            opacity: 1,
+            duration: 0.24,
+            ease: 'power2.out',
+            clearProps: 'filter,opacity',
+          },
+        );
+      }
+      gsap.fromTo(
+        pill,
+        { scaleX: 0.97, scaleY: 0.9 },
+        { scaleX: 1, scaleY: 1, duration: 0.26, ease: 'power3.out', clearProps: 'transform' },
+      );
+    }
+  }, [open]);
+
+  useEffect(
+    () => () => {
+      morphRef.current?.kill();
+    },
+    [],
+  );
 
   const closeLogin = contextSafe(() => {
     if (!loginOpen) {
@@ -769,39 +903,50 @@ export function Hud({ config, videoHost }: HudProps) {
     <>
       {createPortal(videoLayer, videoHost)}
       <div className="bili-hud" ref={hudRootRef}>
-        {open ? (
-          <div className="bili-panel" ref={panelRef}>
-            <div className="bp-flex bp-items-center bp-gap-2 bp-border-b bp-border-white/10 bp-px-3 bp-py-2.5">
-              <img className="bp-h-6 bp-w-6 bp-shrink-0 bp-rounded-md bp-object-cover" src={logoUrl} alt="" />
-              <div className="bp-min-w-0 bp-flex-1">
-                <div className="bp-truncate bp-text-[13px] bp-font-medium">
-                  {info?.title ?? '未加载视频'}
+        <div className="bili-dock">
+          <div
+            className="bili-panel"
+            ref={panelRef}
+            data-inactive={!open}
+            aria-hidden={!open}
+            inert={!open}
+          >
+            <div className="bili-panel-content" ref={panelContentRef}>
+              <div className="bp-flex bp-items-center bp-gap-2 bili-divider-b bp-px-3 bp-py-2.5">
+                <img
+                  className="bp-h-6 bp-w-6 bp-shrink-0 bp-rounded-md bp-object-cover"
+                  src={logoUrl}
+                  alt=""
+                />
+                <div className="bp-min-w-0 bp-flex-1">
+                  <div className="bp-truncate bp-text-[13px] bp-font-medium">
+                    {info?.title ?? '未加载视频'}
+                  </div>
+                  <div className="bp-truncate bp-text-[11px] bili-muted">
+                    {info
+                      ? `${info.owner} · ${qualityLabel}${episodeLabel ? ` · ${episodeLabel}` : ''} · ${formatTime(currentTime)} / ${formatTime(duration)}`
+                      : '输入 BV 号或链接，把视频铺到代码下面'}
+                  </div>
                 </div>
-                <div className="bp-truncate bp-text-[11px] bp-text-zinc-400">
-                  {info
-                    ? `${info.owner} · ${qualityLabel}${episodeLabel ? ` · ${episodeLabel}` : ''} · ${formatTime(currentTime)} / ${formatTime(duration)}`
-                    : '输入 BV 号或链接，把视频铺到代码下面'}
-                </div>
+                <button
+                  type="button"
+                  className="bili-icon-btn"
+                  title="收起"
+                  aria-label="收起控制条"
+                  onClick={collapsePanel}
+                >
+                  <Minus width={15} height={15} />
+                </button>
+                <button
+                  type="button"
+                  className="bili-icon-btn"
+                  title="隐藏皮肤（Cmd/Ctrl+Alt+B 恢复）"
+                  aria-label="隐藏皮肤"
+                  onClick={() => void hideSkin()}
+                >
+                  <X width={15} height={15} />
+                </button>
               </div>
-              <button
-                type="button"
-                className="bili-icon-btn"
-                title="收起"
-                aria-label="收起控制条"
-                onClick={collapsePanel}
-              >
-                <Minus width={15} height={15} />
-              </button>
-              <button
-                type="button"
-                className="bili-icon-btn"
-                title="隐藏皮肤（Cmd/Ctrl+Alt+B 恢复）"
-                aria-label="隐藏皮肤"
-                onClick={() => void hideSkin()}
-              >
-                <X width={15} height={15} />
-              </button>
-            </div>
 
             <div className="bp-space-y-2.5 bp-px-3 bp-py-3">
               <div className="bp-flex bp-items-center bp-gap-2.5">
@@ -830,7 +975,7 @@ export function Hud({ config, videoHost }: HudProps) {
                       }
                     }}
                   />
-                  <span className="bp-w-[86px] bp-shrink-0 bp-text-right bp-text-[11px] bp-tabular-nums bp-text-zinc-400">
+                  <span className="bp-w-[86px] bp-shrink-0 bp-text-right bp-text-[11px] bp-tabular-nums bili-muted">
                     {formatTime(currentTime)} / {formatTime(duration)}
                   </span>
                 </div>
@@ -906,7 +1051,7 @@ export function Hud({ config, videoHost }: HudProps) {
               </div>
 
               {info && (info.episodes?.length ?? 0) > 1 ? (
-                <div className="bp-flex bp-items-center bp-gap-1.5 bp-border-t bp-border-white/10 bp-pt-2">
+                <div className="bp-flex bp-items-center bp-gap-1.5 bili-divider-t bp-pt-2">
                   <button
                     type="button"
                     className="bili-icon-btn"
@@ -967,7 +1112,7 @@ export function Hud({ config, videoHost }: HudProps) {
                 label="暗化"
                 value={settings.dim}
                 min={0}
-                max={0.8}
+                max={1}
                 step={0.01}
                 display={`${Math.round(settings.dim * 100)}%`}
                 onChange={(value) => updateSettings({ dim: value })}
@@ -987,33 +1132,25 @@ export function Hud({ config, videoHost }: HudProps) {
                     }
                   }}
                 />
-                <button type="button" className="bili-primary-btn" onClick={() => void loadManual()}>
+                <Button onClick={() => void loadManual()} disabled={loading}>
                   {loading ? '加载中' : '播放'}
-                </button>
+                </Button>
               </div>
 
               {error ? (
-                <div className="bp-flex bp-items-start bp-gap-2 bp-rounded-lg bp-bg-red-500/10 bp-px-2 bp-py-1.5 bp-text-[11px] bp-text-red-300">
+                <div className="bili-alert bili-alert-error">
                   <span className="bp-flex-1">{error}</span>
-                  <button type="button" className="bp-text-red-200 bp-underline" onClick={retry}>
+                  <Button variant="secondary" size="sm" className="bp-shrink-0" onClick={retry}>
                     重试
-                  </button>
+                  </Button>
                 </div>
               ) : null}
 
-              {notice ? (
-                <div className="bp-rounded-lg bp-bg-amber-500/10 bp-px-2 bp-py-1.5 bp-text-[11px] bp-text-amber-300">
-                  {notice}
-                </div>
-              ) : null}
+              {notice ? <div className="bili-alert bili-alert-warning">{notice}</div> : null}
 
-              <div className="bp-flex bp-items-center bp-gap-2 bp-border-t bp-border-white/10 bp-pt-2">
-                <span
-                  className={`bp-h-1.5 bp-w-1.5 bp-rounded-full ${
-                    online ? 'bp-bg-emerald-400' : 'bp-bg-red-400'
-                  }`}
-                />
-                <span className="bp-text-[11px] bp-text-zinc-500">
+              <div className="bp-flex bp-items-center bp-gap-2 bili-divider-t bp-pt-2">
+                <span className={`bili-dot ${online ? 'bili-dot-online' : 'bili-dot-offline'}`} />
+                <span className="bp-text-[11px] bili-subtle">
                   {online ? '本地服务已连接' : '本地服务断开'}
                 </span>
 
@@ -1026,76 +1163,87 @@ export function Hud({ config, videoHost }: HudProps) {
                         alt=""
                         referrerPolicy="no-referrer"
                       />
-                      <span className="bp-max-w-[96px] bp-truncate bp-text-[11px] bp-text-zinc-300">
+                      <span className="bp-max-w-[96px] bp-truncate bp-text-[11px] bili-text">
                         {state.user.name}
                       </span>
-                      {state.user.vip ? (
-                        <span className="bp-rounded bp-bg-[#fb7299]/20 bp-px-1 bp-py-0.5 bp-text-[10px] bp-text-[#fb7299]">
-                          大会员
-                        </span>
-                      ) : null}
-                      <button type="button" className="bili-link-btn" onClick={() => void logout()}>
+                      {state.user.vip ? <span className="bili-vip">大会员</span> : null}
+                      <Button
+                        variant="link"
+                        size="sm"
+                        className="bili-link-btn"
+                        onClick={() => void logout()}
+                      >
                         退出
-                      </button>
+                      </Button>
                     </>
                   ) : (
-                    <button type="button" className="bili-login-btn" onClick={() => setLoginOpen(true)}>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="bili-login-btn"
+                      onClick={() => setLoginOpen(true)}
+                    >
                       <UserCircle width={13} height={13} />
                       扫码登录
-                    </button>
+                    </Button>
                   )}
                 </div>
               </div>
             </div>
+            </div>
           </div>
-        ) : (
-          <div className="bili-pill" ref={pillRef}>
-            <button
-              type="button"
-              className="bili-play-btn bili-play-btn-small"
-              aria-label={playing ? '暂停' : '播放'}
-              onClick={togglePlay}
-            >
-              {playing ? <PlayerPause width={13} height={13} /> : <PlayerPlay width={13} height={13} />}
-            </button>
-            <span className="bp-max-w-[200px] bp-truncate bp-text-[12px] bp-text-zinc-200">
-              {info?.title ?? 'B站视频皮肤'}
-            </span>
-            <button
-              type="button"
-              className="bili-icon-btn"
-              title="展开控制条"
-              aria-label="展开控制条"
-              onClick={() => setOpen(true)}
-            >
-              <Settings width={14} height={14} />
-            </button>
-            <button
-              type="button"
-              className="bili-icon-btn"
-              title="隐藏皮肤"
-              aria-label="隐藏皮肤"
-              onClick={() => void hideSkin()}
-            >
-              <X width={14} height={14} />
-            </button>
+          <div
+            className="bili-pill"
+            ref={pillRef}
+            data-inactive={open}
+            aria-hidden={open}
+            inert={open}
+          >
+            <div className="bili-pill-content" ref={pillContentRef}>
+              <button
+                type="button"
+                className="bili-play-btn bili-play-btn-small"
+                aria-label={playing ? '暂停' : '播放'}
+                onClick={togglePlay}
+              >
+                {playing ? <PlayerPause width={13} height={13} /> : <PlayerPlay width={13} height={13} />}
+              </button>
+              <span className="bp-max-w-[200px] bp-truncate bp-text-[12px] bili-text">
+                {info?.title ?? 'B站视频皮肤'}
+              </span>
+              <button
+                type="button"
+                className="bili-icon-btn"
+                title="展开控制条"
+                aria-label="展开控制条"
+                onClick={expandPanel}
+              >
+                <Settings width={14} height={14} />
+              </button>
+              <button
+                type="button"
+                className="bili-icon-btn"
+                title="隐藏皮肤"
+                aria-label="隐藏皮肤"
+                onClick={() => void hideSkin()}
+              >
+                <X width={14} height={14} />
+              </button>
+            </div>
           </div>
-        )}
+        </div>
 
         {loginOpen ? (
           <div
             ref={modalOverlayRef}
-            className="bp-fixed bp-inset-0 bp-z-10 bp-flex bp-pointer-events-auto bp-items-center bp-justify-center bp-bg-black/60"
+            className="bili-modal-overlay"
             onClick={(event) => {
               if (event.target === event.currentTarget) {
                 closeLogin();
               }
             }}
           >
-            <div
-              ref={modalRef}
-              className="bp-w-[320px] bp-rounded-2xl bp-border bp-border-white/10 bp-bg-[#101014] bp-p-4 bp-text-zinc-100 bp-shadow-2xl"
-            >
+            <div ref={modalRef} className="bili-modal">
               <div className="bp-mb-3 bp-flex bp-items-center bp-justify-between">
                 <span className="bp-flex bp-items-center bp-gap-1.5 bp-text-[13px] bp-font-medium">
                   <Qrcode width={15} height={15} />
@@ -1106,29 +1254,28 @@ export function Hud({ config, videoHost }: HudProps) {
                 </button>
               </div>
 
-              {qr ? (
-                <img
-                  className="bp-mx-auto bp-h-[220px] bp-w-[220px] bp-rounded-lg bp-bg-white bp-p-2"
-                  src={qr.image}
-                  alt="B站登录二维码"
-                />
-              ) : (
-                <div className="bp-mx-auto bp-flex bp-h-[220px] bp-w-[220px] bp-items-center bp-justify-center bp-rounded-lg bp-bg-white/5 bp-text-[12px] bp-text-zinc-400">
-                  {loginLoading ? '生成中…' : '二维码不可用'}
-                </div>
-              )}
+              <div className="bili-qr-center">
+                {qr ? (
+                  <img className="bili-qr-image" src={qr.image} alt="B站登录二维码" />
+                ) : (
+                  <div className="bili-qr-placeholder">
+                    {loginLoading ? '生成中…' : '二维码不可用'}
+                  </div>
+                )}
+              </div>
 
-              <p className="bp-mt-3 bp-text-center bp-text-[11px] bp-text-zinc-400">
+              <p className="bp-mt-3 bp-text-center bp-text-[11px] bili-muted">
                 {loginMessage || '打开哔哩哔哩 App → 我的 → 扫一扫'}
               </p>
-              <button
-                type="button"
-                className="bp-mt-3 bp-flex bp-w-full bp-items-center bp-justify-center bp-gap-1.5 bp-rounded-lg bp-border bp-border-white/10 bp-bg-transparent bp-py-1.5 bp-text-[12px] bp-text-zinc-300 hover:bp-bg-white/5"
+              <Button
+                variant="outline"
+                size="sm"
+                className="bp-mt-3 bp-w-full"
                 onClick={() => void refreshQr()}
               >
                 <Refresh width={13} height={13} />
                 刷新二维码
-              </button>
+              </Button>
             </div>
           </div>
         ) : null}
@@ -1150,7 +1297,7 @@ interface SliderRowProps {
 function SliderRow({ label, value, min, max, step, display, onChange }: SliderRowProps) {
   return (
     <label className="bp-flex bp-items-center bp-gap-2.5">
-      <span className="bp-w-[44px] bp-shrink-0 bp-text-[11px] bp-text-zinc-400">{label}</span>
+      <span className="bp-w-[44px] bp-shrink-0 bp-text-[11px] bili-muted">{label}</span>
       <input
         className="bili-range bp-flex-1"
         type="range"
@@ -1160,7 +1307,7 @@ function SliderRow({ label, value, min, max, step, display, onChange }: SliderRo
         value={value}
         onChange={(event) => onChange(Number(event.target.value))}
       />
-      <span className="bp-w-[38px] bp-shrink-0 bp-text-right bp-text-[11px] bp-tabular-nums bp-text-zinc-500">
+      <span className="bp-w-[38px] bp-shrink-0 bp-text-right bp-text-[11px] bp-tabular-nums bili-subtle">
         {display}
       </span>
     </label>

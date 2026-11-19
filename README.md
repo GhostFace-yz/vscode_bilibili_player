@@ -2,20 +2,22 @@
 
 <img src="media/logo.png" width="96" align="right" alt="logo" />
 
-把 B 站视频铺在 VS Code 工作台最底层：视频在代码下面播放，编辑区、侧边栏透明/半透明，右下角悬浮控制条——写代码和看视频真正在同一个画面里，而不是挤一个侧边栏。
+把 B 站视频铺在 VS Code 工作台最底层：视频只在编辑区背后播放，侧边栏/终端/状态栏保持原生遮挡，右下角悬浮控制条——写代码和看视频真正在同一个画面里，而不是挤一个侧边栏。
 
-> v0.3.0：工作台注入、直连播放、扫码登录、React + Tailwind HUD、登录后刷新清晰度、上下集切换、shadcn Select、GSAP 动画，已在 macOS / VS Code 1.147 实测。包管理工具为 **pnpm**。
+> v0.4.0：工作台注入、直连播放、扫码登录、React + Tailwind HUD、主题自适应配色、shadcn Select/Button、GSAP morph 动画、登录后刷新清晰度、上下集切换，已在 macOS / VS Code 1.147 实测。包管理工具为 **pnpm**。
 
 ## 功能
 
-- **真·皮肤**：视频层 `z-index: -1`，代码浮在视频上；侧边栏、状态栏、标签页半透明
+- **真·皮肤**：视频层 `z-index: -1`，代码浮在视频上；只有编辑区透明，侧边栏、终端、状态栏保持主题不透明并正常遮挡
 - **直连播放**：≤720P 用 B 站 mp4 durl；1080P/1080P+ 自动切到 DASH 视频流 + 独立音轨，`<video>`/`<audio>` 原生播放并同步，支持播放/暂停/进度/音量
 - **扫码登录**：HUD 内生成二维码，Cookie 存 VS Code `SecretStorage`；未登录也可播放 480P/720P（取决于视频）
 - **HUD 控制**：播放/暂停、进度、音量、静音、清晰度、铺满方式、透明度、模糊、暗化、换 BV、收起、隐藏
+- **跟随 VS Code 主题**：HUD、下拉、按钮、提示、弹窗全部由当前主题的 `--vscode-*` 颜色变量驱动，切换主题即时生效；只有「大会员」标签保留 B 站粉
 - **视频只铺编辑区**：视频层跟随编辑器内容区域（侧边栏/终端/聊天栏会正常遮挡），HUD 也贴在编辑区右下角
 - **登录后刷新清晰度**：扫码登录成功后自动重拉 playurl，清晰度列表与当前画质随之更新；也可点刷新按钮手动更新
 - **上下集切换**：支持多 P 视频和 B 站合集/season，HUD 显示「第 X/Y 集」、上一集/下一集和选集下拉
-- **HUD 组件**：图标来自 [xicons](https://xicons.org/)（Tabler），下拉选择使用 shadcn/ui 风格的 Radix Select，收起/展开/登录弹窗用 GSAP 动画
+- **HUD 组件**：图标来自 [xicons](https://xicons.org/)（Tabler），下拉/按钮使用 shadcn/ui 风格组件，收起/展开是「模糊 → 缩放 → 取消模糊」的 GSAP morph，登录弹窗也有 GSAP 过渡
+- **不遮挡编辑区**：逐层透明化编辑器和吸顶滚动（sticky scroll）背景，滚动到方法内部时顶部不会再出现遮挡横带
 - **安全模式**：不改任何安装文件的 Webview 播放器，作为兜底
 - **可还原**：自动备份、注入内容可完整移除、CSP 与 `product.json` 校验和自动恢复/修正
 - **兼容旧补丁**：检测到之前手动注入的 `#bilibili-background-video` 时，会在皮肤显示期间自动隐藏它
@@ -41,7 +43,7 @@ pnpm run compile     # 构建扩展 + 皮肤 + Tailwind 到 dist/
 pnpm run vsix
 ```
 
-生成 `vscode-bilibili-player-0.3.0.vsix`，然后在 VS Code 扩展面板右上角 `...` → **从 VSIX 安装**，重载窗口后执行 `B站皮肤: 应用皮肤`。
+生成 `vscode-bilibili-player-0.4.0.vsix`，然后在 VS Code 扩展面板右上角 `...` → **从 VSIX 安装**，重载窗口后执行 `B站皮肤: 应用皮肤`。
 
 ### 为什么 `pnpm run compile` 后“没有效果”？
 
@@ -84,7 +86,7 @@ pnpm run vsix
 | `bilibiliPlayer.defaultVideo` | `""` | 默认视频（BV/av/链接） |
 | `bilibiliPlayer.opacity` | `0.5` | 视频层不透明度 |
 | `bilibiliPlayer.blur` | `2` | 视频模糊半径（px） |
-| `bilibiliPlayer.dim` | `0.25` | 视频上方黑色暗化层，越大代码越清晰 |
+| `bilibiliPlayer.dim` | `0.25` | 暗化层强度；使用当前编辑器背景色，100% 时完全回到原编辑区颜色 |
 | `bilibiliPlayer.fit` | `cover` | `cover` / `contain` / `fill` |
 | `bilibiliPlayer.muted` | `true` | 静音播放 |
 | `bilibiliPlayer.autoplay` | `true` | 自动播放 |
@@ -97,7 +99,8 @@ pnpm run vsix
 - **TypeScript**：扩展宿主 + 注入脚本 + React HUD
 - **React 19 + Tailwind CSS 3**：HUD。Tailwind 关闭了 preflight、类名加 `bp-` 前缀、作用域限定在 `#bili-skin-hud`，避免重置 VS Code 工作台样式
 - **xicons / @ricons/tabler**：HUD 图标（播放、音量、收起、上下集、刷新等）
-- **shadcn-style Radix Select**：清晰度、铺满方式、选集下拉
+- **shadcn-style Radix Select / Button**：清晰度、铺满方式、选集下拉，以及重试/刷新等按钮
+- **主题变量**：所有 HUD 颜色取自 `--vscode-foreground` / `--vscode-editorWidget-background` / `--vscode-button-*` 等，自动适配深色、浅色和高对比度主题
 - **GSAP + @gsap/react**：HUD 收起/展开、登录弹窗、切换动效
 - **esbuild**：扩展（CJS / Node）与皮肤（IIFE / 浏览器）双产物
 - **pnpm 10**：包管理与 lockfile
@@ -163,7 +166,7 @@ test/hud-fixture.html     # 浏览器里预览 HUD
 - CDN 播放地址有时效；加载失败时 HUD 会尝试备用地址，仍失败可点「重试」
 - 修改了 VS Code 安装目录：**VS Code 升级后需要重新应用皮肤**；`还原工作台` 可随时恢复
 - VS Code 的 `product.json` 校验和是**无 `=` 填充的 base64**，扩展已按此适配；如果你之前用其它工具改过 `workbench.js` 等文件，会看到「安装已损坏」提示，运行 `修复校验和` 即可
-- 未实现弹幕、播放列表、DASH 1080P+；安全模式仅内嵌官方 iframe，控制能力有限
+- 未实现弹幕、播放列表；安全模式仅内嵌官方 iframe，控制能力有限
 
 ## 开发
 
