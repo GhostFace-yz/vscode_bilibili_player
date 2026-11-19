@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.4.2
+
+- 音画同步：独立音轨每 250ms 校准一次，漂移 >120ms 立即 seek；暂停/拖动/缓冲时同时暂停 audio，修复“暂停了声音还在放”
+- 切清晰度/切回原生 mp4 时停掉旧 audio；旧版 bilibilihelper 注入的背景 media 也会被暂停并静音
+- 主题细节：边框改用编辑器输入框的细边框（`input.border`/`dropdown.border`），按钮、播放键、滑杆改用主题的鲜艳强调色（`focusBorder`），不再用 Dracula 偏灰的 `button.background`
+
 ## 0.4.1
 
 - 修复主题变量作用域：VS Code 把 `--vscode-*` 定义在 `.monaco-workbench` 上，之前 HUD/视频层/Radix Portal 挂在 `body`，实际一直用回退色；现在全部挂到 workbench 内部，Portal 也移入 HUD，Dracula 等主题的颜色会真正生效

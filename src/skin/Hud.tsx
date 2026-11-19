@@ -181,6 +181,8 @@ export function Hud({ config, videoHost }: HudProps) {
       setLoading(true);
       setError(null);
       setNotice(null);
+      // 切换清晰度/视频时先停掉旧的独立音轨，避免旧 audio 继续播放。
+      audioRef.current?.pause();
       try {
         const next = await api.play(ref, qn);
         setInfo(next);
@@ -243,7 +245,7 @@ export function Hud({ config, videoHost }: HudProps) {
     }
 
     let previousDisplay: string | null = null;
-    const hideLegacy = (): boolean => {
+    const silenceLegacy = (): boolean => {
       const legacy = document.getElementById('bilibili-background-video');
       if (!legacy) {
         return false;
@@ -252,16 +254,20 @@ export function Hud({ config, videoHost }: HudProps) {
         previousDisplay = legacy.style.display;
       }
       legacy.style.display = 'none';
+      // 只 display:none 不会停止播放；旧插件的 video 可能还在出声/和我们的视频不同步。
+      legacy.querySelectorAll<HTMLMediaElement>('video, audio').forEach((media) => {
+        media.muted = true;
+        if (!media.paused) {
+          media.pause();
+        }
+      });
       return true;
     };
 
-    hideLegacy();
-    const timer = window.setInterval(() => {
-      if (hideLegacy()) {
-        window.clearInterval(timer);
-      }
-    }, 500);
-    const stop = window.setTimeout(() => window.clearInterval(timer), 10_000);
+    silenceLegacy();
+    // 旧插件可能在启动后几秒才注入，持续压住它的媒体；15s 后停止轮询。
+    const timer = window.setInterval(silenceLegacy, 1000);
+    const stop = window.setTimeout(() => window.clearInterval(timer), 15_000);
 
     return () => {
       window.clearInterval(timer);
@@ -341,31 +347,71 @@ export function Hud({ config, videoHost }: HudProps) {
     }
   }, [volume]);
 
-  // DASH 是独立音轨：让 audio 跟随 video 的播放/暂停/进度，并做轻量漂移修正
-  const syncAudio = useCallback(function sync(force = false) {
-    const video = videoRef.current;
+  // 从 DASH 切回原生 mp4 时，确保旧的独立音轨被彻底停掉。
+  useEffect(() => {
+    if (audioSrc) {
+      return;
+    }
     const audio = audioRef.current;
-    if (!video || !audio || !audio.getAttribute('src')) {
+    if (!audio) {
       return;
     }
-    applyMediaSettings();
-    if (audio.readyState < 1) {
-      audio.addEventListener('loadedmetadata', () => sync(true), { once: true });
-      return;
-    }
-    if (force || Math.abs(audio.currentTime - video.currentTime) > 0.35) {
-      try {
-        audio.currentTime = video.currentTime;
-      } catch {
-        // 音频尚未可 seek
+    audio.pause();
+    audio.removeAttribute('src');
+    audio.load();
+  }, [audioSrc]);
+
+  // DASH 是独立音轨：audio 必须严格跟随 video 的播放/暂停/进度。
+  const syncAudio = useCallback(
+    function sync(force = false) {
+      const video = videoRef.current;
+      const audio = audioRef.current;
+      if (!video || !audio || !audio.getAttribute('src')) {
+        return;
       }
+      applyMediaSettings();
+
+      // video 暂停/结束，audio 必须立刻停；否则会出现“暂停了声音还在放”。
+      if (video.paused || video.ended) {
+        audio.pause();
+        return;
+      }
+
+      if (audio.readyState < 1) {
+        audio.addEventListener('loadedmetadata', () => sync(true), { once: true });
+        return;
+      }
+
+      const drift = audio.currentTime - video.currentTime;
+      // 超过 120ms 直接对齐；阈值太大（之前 350ms）会明显听出音画不同步。
+      if (force || Math.abs(drift) > 0.12) {
+        try {
+          audio.currentTime = video.currentTime;
+        } catch {
+          // 音频尚未可 seek
+        }
+      }
+      audio.playbackRate = 1;
+      if (audio.paused) {
+        void audio.play().catch(() => undefined);
+      }
+    },
+    [applyMediaSettings],
+  );
+
+  // timeupdate 只有 ~4Hz，额外用 250ms 轮询兜住漂移/暂停边界。
+  useEffect(() => {
+    if (!audioSrc) {
+      return;
     }
-    if (video.paused) {
-      audio.pause();
-    } else {
-      void audio.play().catch(() => undefined);
-    }
-  }, [applyMediaSettings]);
+    const timer = window.setInterval(() => {
+      const video = videoRef.current;
+      if (video && !video.paused && !video.ended) {
+        syncAudio();
+      }
+    }, 250);
+    return () => window.clearInterval(timer);
+  }, [audioSrc, syncAudio]);
 
   // HUD 也要贴住编辑区右下角（真正定位的是 main.tsx 创建的 #bili-skin-hud 宿主）
   useEffect(() => {
@@ -734,6 +780,7 @@ export function Hud({ config, videoHost }: HudProps) {
       void video.play().catch((error) => setError(`播放失败：${toMessage(error)}`));
     } else {
       video.pause();
+      audioRef.current?.pause();
     }
   };
 
@@ -888,11 +935,22 @@ export function Hud({ config, videoHost }: HudProps) {
             setPlaying(true);
             syncAudio(true);
           }}
-          onPause={() => {
+          onPlaying={() => syncAudio(true)}
+          onPause={(event) => {
             setPlaying(false);
-            audioRef.current?.pause();
+            const audio = audioRef.current;
+            if (audio) {
+              audio.pause();
+              try {
+                audio.currentTime = event.currentTarget.currentTime;
+              } catch {
+                // audio 尚未可 seek
+              }
+            }
           }}
-          onSeeking={() => syncAudio(true)}
+          onSeeking={() => audioRef.current?.pause()}
+          onSeeked={() => syncAudio(true)}
+          onWaiting={() => audioRef.current?.pause()}
           onEnded={() => audioRef.current?.pause()}
           onError={handleVideoError}
         />

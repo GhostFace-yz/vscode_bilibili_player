@@ -11,27 +11,27 @@
       --vscode-foreground: #f8f8f2;
       --vscode-descriptionForeground: #6272a4;
       --vscode-disabledForeground: #6f6f6f;
-      --vscode-editor-background: #1e1e1e;
-      --vscode-sideBar-background: #252526;
+      --vscode-editor-background: #282a36;
+      --vscode-sideBar-background: #21222c;
       --vscode-editorWidget-background: #21222c;
-      --vscode-widget-border: #454545;
-      --vscode-panel-border: #3c3c3c;
+      --vscode-widget-border: #191a21;
+      --vscode-panel-border: #bd93f9;
       --vscode-widget-shadow: #000000;
-      --vscode-list-hoverBackground: #2a2d2e;
+      --vscode-list-hoverBackground: #44475a80;
       --vscode-list-activeSelectionBackground: #04395e;
       --vscode-list-activeSelectionForeground: #ffffff;
-      --vscode-list-highlightForeground: #2aaaff;
-      --vscode-focusBorder: #bd93f9;
+      --vscode-list-highlightForeground: #8be9fd;
+      --vscode-focusBorder: #6272a4;
       --vscode-textLink-foreground: #8be9fd;
-      --vscode-button-background: #6272a4;
+      --vscode-button-background: #44475a;
       --vscode-button-foreground: #ffffff;
-      --vscode-button-hoverBackground: #727fa8;
-      --vscode-button-secondaryBackground: #3a3d41;
-      --vscode-button-secondaryForeground: #ffffff;
+      --vscode-button-hoverBackground: #525566;
+      --vscode-button-secondaryBackground: #282a36;
+      --vscode-button-secondaryForeground: #f8f8f2;
       --vscode-button-secondaryHoverBackground: #45494e;
       --vscode-input-background: #282a36;
       --vscode-input-foreground: #f8f8f2;
-      --vscode-input-border: #6272a4;
+      --vscode-input-border: #191a21;
       --vscode-input-placeholderForeground: #a6a6a6;
       --vscode-inputValidation-errorBackground: #5a1d1d;
       --vscode-inputValidation-errorBorder: #be1100;
@@ -296,7 +296,8 @@
       ],
       url: params.get('media') ?? '',
       backupUrls: [],
-      mode: 'native',
+      audioUrl: params.get('audio') ?? undefined,
+      mode: params.get('audio') ? 'dash' : 'native',
       episodes: [
         { bvid: 'BV1AosS6yEX9', cid: 1, page: 1, title: '【实况】全流程' },
         { bvid: 'BV1AosS6yEX9', cid: 2, page: 2, title: '第二集 · 抢银行' },

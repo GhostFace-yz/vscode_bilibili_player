@@ -13,7 +13,11 @@
   --bili-fg-subtle: var(--vscode-disabledForeground, #7a7a7a);
   --bili-bg: var(--vscode-editorWidget-background, var(--vscode-sideBar-background, #252526));
   --bili-bg-translucent: color-mix(in srgb, var(--bili-bg) 94%, transparent);
-  --bili-border: var(--vscode-widget-border, var(--vscode-panel-border, rgba(128, 128, 128, 0.28)));
+  /* 边框取编辑器输入框/下拉框的细边框，避免 Dracula 的 panel.border（#BD93F9）过亮。 */
+  --bili-border: var(
+    --vscode-input-border,
+    var(--vscode-dropdown-border, var(--vscode-panel-border, rgba(128, 128, 128, 0.28)))
+  );
   --bili-hover: var(
     --vscode-list-hoverBackground,
     var(--vscode-toolbar-hoverBackground, rgba(128, 128, 128, 0.16))
@@ -22,9 +26,13 @@
   --bili-selected-fg: var(--vscode-list-activeSelectionForeground, var(--bili-fg));
   --bili-accent: var(--vscode-focusBorder, var(--vscode-button-background, #007acc));
   --bili-link: var(--vscode-textLink-foreground, var(--bili-accent));
-  --bili-button-bg: var(--vscode-button-background, #0e639c);
+  /* 按钮/滑杆用主题的 focusBorder（Dracula 下是 #6272A4）作为鲜艳强调色。 */
+  --bili-button-bg: var(--vscode-focusBorder, var(--vscode-button-background, #0e639c));
   --bili-button-fg: var(--vscode-button-foreground, #ffffff);
-  --bili-button-hover: var(--vscode-button-hoverBackground, #1177bb);
+  --bili-button-hover: var(
+    --vscode-button-hoverBackground,
+    color-mix(in srgb, var(--bili-button-bg) 86%, white)
+  );
   --bili-button-2-bg: var(--vscode-button-secondaryBackground, rgba(128, 128, 128, 0.18));
   --bili-button-2-fg: var(--vscode-button-secondaryForeground, var(--bili-fg));
   --bili-button-2-hover: var(--vscode-button-secondaryHoverBackground, var(--bili-hover));
