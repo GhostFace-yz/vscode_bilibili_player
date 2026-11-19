@@ -1,13 +1,6 @@
-export interface VideoRef {
-  /** 视频 BV 号，例如 BV1GJ411x7h7 */
-  bvid?: string;
-  /** 视频 av 号（数字部分），例如 170001 */
-  aid?: string;
-  /** 分 P，从 1 开始 */
-  page?: number;
-  /** 起播时间（秒） */
-  startSeconds?: number;
-}
+import type { VideoRef } from '../shared/types';
+
+export type { VideoRef };
 
 export interface EmbedOptions {
   autoplay?: boolean;

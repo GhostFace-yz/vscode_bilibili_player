@@ -2,7 +2,7 @@
   "name": "vscode-bilibili-player",
   "displayName": "Bilibili 视频皮肤",
   "description": "把 B 站视频铺在 VS Code 工作台背景层播放，边写代码边看视频。",
-  "version": "0.0.1",
+  "version": "0.1.0",
   "publisher": "GhostFace-yz",
   "license": "MIT",
   "repository": {
@@ -35,16 +35,51 @@
         "category": "Bilibili Player"
       },
       {
+        "command": "bilibiliPlayer.toggle",
+        "title": "B站皮肤: 显示/隐藏皮肤",
+        "category": "Bilibili Player"
+      },
+      {
+        "command": "bilibiliPlayer.login",
+        "title": "B站皮肤: 扫码登录",
+        "category": "Bilibili Player"
+      },
+      {
+        "command": "bilibiliPlayer.applySkin",
+        "title": "B站皮肤: 应用皮肤（注入工作台）",
+        "category": "Bilibili Player"
+      },
+      {
+        "command": "bilibiliPlayer.restoreSkin",
+        "title": "B站皮肤: 还原工作台",
+        "category": "Bilibili Player"
+      },
+      {
+        "command": "bilibiliPlayer.fixChecksums",
+        "title": "B站皮肤: 修复校验和（消除安装损坏提示）",
+        "category": "Bilibili Player"
+      },
+      {
         "command": "bilibiliPlayer.openPlayerPanel",
         "title": "B站皮肤: 在编辑器区域打开播放器(安全模式)",
+        "category": "Bilibili Player"
+      },
+      {
+        "command": "bilibiliPlayer.showLog",
+        "title": "B站皮肤: 显示日志",
         "category": "Bilibili Player"
       }
     ],
     "keybindings": [
       {
-        "command": "bilibiliPlayer.play",
+        "command": "bilibiliPlayer.toggle",
         "key": "ctrl+alt+b",
         "mac": "cmd+alt+b"
+      },
+      {
+        "command": "bilibiliPlayer.play",
+        "key": "ctrl+alt+shift+b",
+        "mac": "cmd+alt+shift+b"
       }
     ],
     "configuration": {
@@ -58,19 +93,27 @@
         },
         "bilibiliPlayer.opacity": {
           "type": "number",
-          "default": 0.35,
+          "default": 0.5,
           "minimum": 0.05,
           "maximum": 1,
-          "description": "视频层不透明度。仅用于皮肤模式。",
+          "description": "视频层不透明度。",
           "order": 2
         },
         "bilibiliPlayer.blur": {
           "type": "number",
-          "default": 0,
+          "default": 2,
           "minimum": 0,
           "maximum": 40,
-          "description": "视频层模糊半径（px）。仅用于皮肤模式。",
+          "description": "视频层模糊半径（px）。",
           "order": 3
+        },
+        "bilibiliPlayer.dim": {
+          "type": "number",
+          "default": 0.25,
+          "minimum": 0,
+          "maximum": 0.8,
+          "description": "视频上方的黑色暗化层强度，越大代码越清晰。",
+          "order": 4
         },
         "bilibiliPlayer.fit": {
           "type": "string",
@@ -81,24 +124,18 @@
           ],
           "default": "cover",
           "description": "视频铺满屏幕的方式。",
-          "order": 4
+          "order": 5
         },
         "bilibiliPlayer.muted": {
           "type": "boolean",
           "default": true,
           "description": "静音播放。",
-          "order": 5
+          "order": 6
         },
         "bilibiliPlayer.autoplay": {
           "type": "boolean",
           "default": true,
           "description": "打开后自动播放。",
-          "order": 6
-        },
-        "bilibiliPlayer.danmaku": {
-          "type": "boolean",
-          "default": false,
-          "description": "显示弹幕（仅官方 iframe 播放器支持）。",
           "order": 7
         },
         "bilibiliPlayer.quality": {
@@ -126,26 +163,32 @@
           ],
           "description": "期望清晰度（实际可用清晰度取决于账号与视频源）。",
           "order": 8
-        },
-        "bilibiliPlayer.useIframePlayer": {
-          "type": "boolean",
-          "default": false,
-          "description": "使用 B 站官方 iframe 播放器：兼容性最好，但无法程序化控制播放。",
-          "order": 9
         }
       }
     }
   },
   "scripts": {
     "check": "tsc --noEmit",
-    "compile": "node esbuild.js",
-    "watch": "node esbuild.js --watch",
-    "vscode:prepublish": "node esbuild.js --production"
+    "build:skin": "tailwindcss -i src/skin/tailwind.css -o dist/skin.css --minify",
+    "compile": "node esbuild.js && npm run build:skin",
+    "watch": "concurrently -k -n esbuild,tailwind -c blue,magenta \"node esbuild.js --watch\" \"tailwindcss -i src/skin/tailwind.css -o dist/skin.css --watch\"",
+    "package": "node esbuild.js --production && npm run build:skin",
+    "vscode:prepublish": "npm run package"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",
+    "@types/qrcode": "^1.5.6",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
     "@types/vscode": "^1.85.0",
+    "autoprefixer": "^10.6.2",
+    "concurrently": "^9.2.5",
     "esbuild": "^0.25.0",
+    "postcss": "^8.5.33",
+    "qrcode": "^1.5.4",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
+    "tailwindcss": "^3.4.19",
     "typescript": "^5.7.0"
   }
 }

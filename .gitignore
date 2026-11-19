@@ -5,3 +5,8 @@ dist/
 .DS_Store
 .vscode-test/
 *.log
+
+.chrome-profile/
+.chrome-crashes/
+test/*.png
+.dev-auth.json

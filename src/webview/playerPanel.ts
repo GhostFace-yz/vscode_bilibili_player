@@ -11,7 +11,6 @@ let currentPanel: vscode.WebviewPanel | undefined;
 export function openPlayerPanel(ref: VideoRef, settings: BilibiliPlayerSettings): void {
   const embedUrl = buildEmbedUrl(ref, {
     autoplay: settings.autoplay,
-    danmaku: settings.danmaku,
     quality: settings.quality,
     page: ref.page,
     startSeconds: ref.startSeconds,

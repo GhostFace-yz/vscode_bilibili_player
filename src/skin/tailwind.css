@@ -1,0 +1,238 @@
+@tailwind utilities;
+
+:root {
+  --bili-accent: #fb7299;
+}
+
+#bili-skin-hud,
+#bili-skin-hud * {
+  box-sizing: border-box;
+}
+
+#bili-skin-hud {
+  position: fixed;
+  right: 18px;
+  bottom: 18px;
+  z-index: 2147483000;
+  pointer-events: none;
+  font-family: var(--vscode-font-family, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif);
+  font-size: 12px;
+  line-height: 1.4;
+  color: #e4e4e7;
+}
+
+#bili-skin-hud button,
+#bili-skin-hud input,
+#bili-skin-hud select {
+  font: inherit;
+}
+
+#bili-skin-hud button {
+  cursor: pointer;
+}
+
+#bili-skin-hud ::selection {
+  background: rgba(251, 114, 153, 0.35);
+}
+
+.bili-panel {
+  pointer-events: auto;
+  width: 380px;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 16px;
+  background: rgba(16, 16, 20, 0.92);
+  color: #e4e4e7;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.55);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+}
+
+.bili-pill {
+  pointer-events: auto;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 999px;
+  background: rgba(16, 16, 20, 0.92);
+  color: #e4e4e7;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+}
+
+#bili-skin-hud .bili-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 24px;
+  height: 24px;
+  padding: 0 4px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: #a1a1aa;
+  font-size: 14px;
+  line-height: 1;
+}
+
+#bili-skin-hud .bili-icon-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: #f4f4f5;
+}
+
+#bili-skin-hud .bili-link-btn {
+  border: 0;
+  background: transparent;
+  color: #fb7299;
+  font-size: 11px;
+  padding: 2px 0;
+}
+
+#bili-skin-hud .bili-link-btn:hover {
+  text-decoration: underline;
+}
+
+#bili-skin-hud .bili-input {
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 30px;
+  padding: 0 10px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.35);
+  color: #f4f4f5;
+  font-size: 12px;
+  outline: none;
+}
+
+#bili-skin-hud .bili-input::placeholder {
+  color: #71717a;
+}
+
+#bili-skin-hud .bili-input:focus {
+  border-color: rgba(251, 114, 153, 0.65);
+}
+
+#bili-skin-hud .bili-primary-btn {
+  flex: 0 0 auto;
+  height: 30px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: 8px;
+  background: #fb7299;
+  color: #09090b;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+#bili-skin-hud .bili-primary-btn:hover {
+  background: #ff8aae;
+}
+
+#bili-skin-hud .bili-select {
+  height: 26px;
+  max-width: 104px;
+  padding: 0 4px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.35);
+  color: #e4e4e7;
+  font-size: 11px;
+  outline: none;
+}
+
+#bili-skin-hud .bili-range {
+  width: 100%;
+  height: 4px;
+  margin: 0;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.18);
+  outline: none;
+  appearance: none;
+  -webkit-appearance: none;
+}
+
+#bili-skin-hud .bili-range::-webkit-slider-thumb {
+  width: 12px;
+  height: 12px;
+  border: 2px solid #101014;
+  border-radius: 50%;
+  background: #fb7299;
+  appearance: none;
+  -webkit-appearance: none;
+}
+
+/* ---------- 视频层：位于工作台最底层 ---------- */
+
+#bili-skin-video-host {
+  display: contents;
+}
+
+#bili-skin-video-layer {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  overflow: hidden;
+  pointer-events: none;
+  background: #050507;
+}
+
+#bili-skin-video-layer .bili-video {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: var(--bili-fit, cover);
+  opacity: var(--bili-opacity, 0.5);
+  filter: blur(var(--bili-blur, 2px)) saturate(1.05);
+  transform: scale(1.02);
+}
+
+#bili-skin-video-layer .bili-dim {
+  position: absolute;
+  inset: 0;
+  background: #000;
+  opacity: var(--bili-dim, 0.25);
+}
+
+/* ---------- 让工作台透出视频 ---------- */
+
+body.bili-skin-on {
+  background: transparent !important;
+}
+
+body.bili-skin-on .monaco-workbench,
+body.bili-skin-on .monaco-workbench .monaco-grid-view,
+body.bili-skin-on .monaco-workbench .monaco-grid-view .monaco-split-view2,
+body.bili-skin-on .monaco-workbench .monaco-grid-view .split-view-container,
+body.bili-skin-on .monaco-workbench .monaco-grid-view .split-view-view,
+body.bili-skin-on .monaco-workbench .part.editor,
+body.bili-skin-on .monaco-workbench .part.editor > .content,
+body.bili-skin-on .monaco-workbench .part.editor > .content .editor-group-container,
+body.bili-skin-on .monaco-workbench .editor-container,
+body.bili-skin-on .monaco-workbench .editor-instance,
+body.bili-skin-on .monaco-workbench .monaco-editor,
+body.bili-skin-on .monaco-workbench .monaco-editor .monaco-editor-background,
+body.bili-skin-on .monaco-workbench .monaco-editor .margin {
+  background-color: transparent !important;
+}
+
+body.bili-skin-on .monaco-workbench .part.sidebar,
+body.bili-skin-on .monaco-workbench .part.auxiliarybar,
+body.bili-skin-on .monaco-workbench .part.activitybar,
+body.bili-skin-on .monaco-workbench .part.panel,
+body.bili-skin-on .monaco-workbench .part.statusbar,
+body.bili-skin-on .monaco-workbench .part.titlebar,
+body.bili-skin-on .monaco-workbench .tabs-and-actions-container,
+body.bili-skin-on .monaco-workbench .breadcrumbs-control {
+  background-color: rgba(20, 20, 24, 0.55) !important;
+  background-color: color-mix(in srgb, var(--vscode-editor-background, #1e1e1e) 60%, transparent) !important;
+}
+
+body.bili-skin-on .monaco-workbench .terminal-wrapper,
+body.bili-skin-on .monaco-workbench .xterm-viewport {
+  background-color: transparent !important;
+}

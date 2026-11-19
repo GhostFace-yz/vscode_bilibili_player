@@ -1,6 +1,10 @@
 .vscode/**
 src/**
 docs/**
+test/**
+scripts/**
+.chrome-profile/**
+.chrome-crashes/**
 .github/**
 esbuild.js
 tsconfig.json

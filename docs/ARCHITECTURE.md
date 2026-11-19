@@ -1,44 +1,46 @@
-# 架构与方案
+# 架构与实现
 
-目标：**视频不是挤在侧边栏或某个标签页里，而是成为 VS Code 工作台的背景层** —— 编辑区半透明，代码在上、视频在下，同时可看。
+目标：视频不是挤在侧边栏或标签页里，而是铺在 VS Code 工作台**最底层**，代码浮在视频之上。
 
-> 本文档记录方案取舍与技术栈，供确认后再进入实现。
+v0.1.0 已按「工作台注入 + 直连播放」实现，并在 macOS + VS Code 1.147.0 上实测。
 
-## 1. 为什么需要特殊手段
+## 1. 路线选择
 
-VS Code 扩展 API 没有"设置工作台背景视频"的能力，也没有"把 Webview 放到编辑器后面"的 API。`WebviewPanel` 只能是独立标签页，`WebviewView` 只能放在侧边栏/面板区。因此真正的"皮肤"只有两条路：
+| 路线 | 是否真·皮肤 | 结论 |
+| --- | --- | --- |
+| **A. 工作台注入** | ✅ 视频在代码下面 | **采用** |
+| B. Webview 播放器 | ❌ 独立区域 | 保留为安全模式 |
+| C. 原生悬浮窗 | ❌ 覆盖在代码之上 | 不做 |
 
-| 路线 | 原理 | 是否真·皮肤 | 代价 |
-| --- | --- | --- | --- |
-| **A. 工作台注入（推荐）** | 修改 `workbench.html`，注入脚本创建全屏视频层 + 透明主题色 | ✅ 视频衬在代码下面 | 修改安装目录，升级后需重打补丁，会出现"安装损坏"提示 |
-| **B. Webview 播放器（兜底）** | 编辑器旁开一个 Webview 内嵌 B 站播放器 | ❌ 独立区域 | 安全、零侵入，v0.0.1 已实现 |
-| C. 原生悬浮窗 | Swift/C# 写一个透明置顶窗口叠在屏幕上 | ❌ 只能覆盖在代码之上 | 三平台各写一套原生代码，遮挡代码、焦点/多屏问题多 |
+VS Code 没有「背景视频」API，`WebviewPanel` 只能是独立标签页，`WebviewView` 只能放侧边栏/面板区。因此真正的皮肤只能修改 workbench。
 
-建议：**A 为主 + B 兜底**，C 不做。
-
-## 2. 路线 A：工作台注入
-
-### 2.1 注入点
-
-以本机 VS Code 1.147.0（macOS）实测：
+## 2. 注入点（实测 VS Code 1.147.0 / macOS）
 
 - `appRoot`：`/Applications/Visual Studio Code.app/Contents/Resources/app`
 - 工作台 HTML：`out/vs/code/electron-browser/workbench/workbench.html`
-  （旧版本在 `out/vs/code/electron-sandbox/workbench/workbench.html`，需按版本探测）
-- 工作台主 JS：`out/vs/workbench/workbench.desktop.main.js`
-- `product.json` 内含 `checksums`（sha256 base64），覆盖 `workbench.desktop.main.js`、`preload.js` 等文件
+  （旧版本在 `electron-sandbox` 下，`locate.ts` 两种都会探测）
+- `product.json` 的 `checksums` 覆盖 `workbench.html`、`workbench.js`、`workbench.desktop.main.js` 等 10 个文件
 
 注入内容：
 
-1. 在 `workbench.html` 的 `</body>` 前插入 `<script src="./bilibili-skin.js"></script>`；
-2. 把构建产物 `dist/skin.js` 写到同目录（同源，满足 CSP `script-src 'self'`）；
-3. 脚本在渲染进程里创建全屏容器（`position: fixed; inset: 0; z-index: -1`），内部放 `<video>` 或 `<iframe>`；
-4. 用 `workbench.colorCustomizations` 把 `editor.background`、`sideBar.background`、`panel.background`、`terminal.background` 等改成透明色（`#00000000` 或带 alpha 的 rgba）；
-5. 叠加一个悬浮 HUD（播放/暂停、进度、静音、透明度、模糊、换视频、隐藏），用原生 DOM + CSS 实现。
+```html
+<!-- bilibili-skin:head:start -->
+<link rel="stylesheet" href="./bilibili-skin.css?v=..." />
+<!-- bilibili-skin:head:end -->
+...
+<!-- bilibili-skin:body:start -->
+<script src="./bilibili-skin.config.js?v=..." defer></script>
+<script src="./bilibili-skin.js?v=..." defer></script>
+<!-- bilibili-skin:body:end -->
+```
 
-### 2.2 CSP
+- `?v=<timestamp>`：每次应用都换 URL，避免 Chromium 缓存旧皮肤（实测缓存会导致修改不生效）
+- 3 个文件写到 workbench 同目录，满足 CSP `script-src 'self'`
+- 配置里只放 `port` / `token` / `version`，不放用户数据
 
-当前 `workbench.html` 的 CSP 限制了 B 站资源：
+## 3. CSP
+
+原始 `workbench.html` 的限制：
 
 ```
 media-src  'self'
@@ -47,95 +49,103 @@ script-src 'self' 'unsafe-eval' blob:
 require-trusted-types-for 'script'
 ```
 
-打补丁时需要重写 CSP：
-
-- `media-src` 增加 `https://*.bilivideo.com https://*.bilibili.com blob:`
-- `frame-src` 增加 `https://player.bilibili.com https://www.bilibili.com`
-- `connect-src` 增加 `ws://127.0.0.1:*`（扩展 ↔ 皮肤 RPC，可选）
-- 注入脚本不使用 `innerHTML`（受 Trusted Types 约束），全部 `createElement` + `textContent`。
-
-### 2.3 "安装损坏"提示
-
-VS Code 启动时会校验 `product.json.checksums` 中的文件哈希，不匹配就弹"安装已损坏"。处理方式：
-
-- 修改后重算 `workbench.desktop.main.js` / `workbench.html` 等被改文件的 sha256，写回 `product.json` 的 `checksums`；
-- 打补丁前备份原文件到扩展 `globalStorage`；
-- 提供"还原工作台"命令，恢复备份与 checksums。
-
-### 2.4 升级与失效
-
-VS Code 升级会覆盖 `workbench.html` / `workbench.desktop.main.js`。扩展在启动时比较 `version` 与上次打补丁的版本：
-
-- 版本变化 → 提示"检测到 VS Code 已升级，是否重新应用皮肤？"；
-- 也支持监听 `vscode.env.appRoot` 下的文件存在性，判断是否需要重打。
-
-### 2.5 播放内核
-
-| 内核 | 实现 | 清晰度 | 可控制性 | 依赖 |
-| --- | --- | --- | --- | --- |
-| 官方 iframe | `player.bilibili.com/player.html?bvid=...` | 未登录 480P，登录可 1080P | 极弱（只能换 URL 参数） | 无 |
-| 直链 + 本地代理 | 扩展宿主请求 playurl，把带 Referer 的流经 `127.0.0.1` 代理给 `<video>` | 未登录 360/480P，登录 720P+ | 完整（播放/暂停/进度/静音/倍速） | Node http 代理 |
-| DASH + MSE | shaka-player / mp4box.js 播放分离的音视频流 | 1080P+/4K | 完整 | shaka-player ≈ 200KB |
-
-推荐：v1 用"直链 + 本地代理"，v2 再上 DASH。官方 iframe 作为兼容回退。
-
-### 2.6 本地代理要点
-
-- 只监听 `127.0.0.1`，随机端口 + 一次性 token，防止被网页滥用；
-- 转发 `Range` 请求（B 站 CDN 支持分片），透传 `Content-Range`/`Accept-Ranges`；
-- 请求头带 `Referer: https://www.bilibili.com` 与桌面 UA，否则 CDN 403；
-- 登录态：`SESSDATA` 等 Cookie 存 `SecretStorage`，只在代理进程内使用。
-
-## 3. 技术栈清单
-
-**必需**
-
-- TypeScript —— 扩展宿主逻辑、注入脚本（同一套类型与构建）
-- CSS —— 透明工作台、视频层、HUD 样式
-- HTML —— `workbench.html` 注入模板、Webview 页面
-- Node.js —— 扩展宿主、本地代理、文件补丁
-- JSON —— `package.json` 清单、配置项
-
-**可选**
-
-- `shaka-player` / `mp4box.js` —— DASH 播放（如果要做 1080P+）
-- Vitest / `node:test` —— 单元测试（BV 解析、CSP 改写、checksum 计算）
-- React / Svelte / Vue —— 设置页；HUD 不建议用框架，原生 DOM 更稳更小
-- Swift / C# / GTK —— 仅路线 C 的原生悬浮窗，不建议
-- Python —— 仅发布脚本，不必要
-
-结论：**除 TS/CSS/HTML/Node 外，没有必须新增的语言**；真正的可选项是播放内核（shaka-player）和是否做原生方案（Swift/C#）。
-
-## 4. 目录规划（目标）
+`csp.ts` 在原有指令上追加（保留其余指令与格式）：
 
 ```
-src/
-  extension.ts              # 激活、命令、状态栏
-  config.ts                 # 设置读取
-  bilibili/
-    parse.ts                # BV/av/URL 解析（已实现）
-    api.ts                  # view / playurl 请求
-    auth.ts                 # Cookie / 登录态
-  proxy/
-    server.ts               # 本地流代理
-  workbench/
-    locate.ts               # 探测安装路径与版本
-    patcher.ts              # 注入 / 还原 / 备份
-    csp.ts                  # CSP 改写
-    checksums.ts            # 校验和修复
-  skin/
-    main.ts                 # 注入入口（构建为 IIFE）
-    hud.ts                  # 悬浮控制条
-    player.ts               # iframe / video 播放器
-    styles.ts               # 注入样式
-  webview/
-    playerPanel.ts          # 安全模式（已实现）
+media-src    https://*.bilivideo.com https://*.bilibili.com blob:
+connect-src  http://127.0.0.1:* http://localhost:*
+frame-src    https://player.bilibili.com
 ```
 
-## 5. 安全与合规
+- 不放开 `script-src 'unsafe-inline'`
+- HUD 不使用 `innerHTML`，兼容 `require-trusted-types-for 'script'`
 
-- 只在用户显式执行"应用皮肤"时改动文件，首次需确认；
-- 自动备份 + 一键还原；
-- Cookie 只存本地 `SecretStorage`，不上传；
-- 不提供下载/缓存视频能力；
-- 若上架扩展商店，默认走安全模式（B），注入模式需用户手动开启。
+## 4. 校验和（关键坑）
+
+`product.json.checksums` 的值是 **sha256 后去掉 `=` 填充的标准 base64**。如果按普通 base64（带 `=`）写回，会导致「Your Code installation appears to be corrupt」。
+
+- `checksums.ts` 的 `sha256Base64()` 使用 `.replace(/=+$/, '')`
+- `applyPatch` 写入 `workbench.html` 的新哈希并备份原 `product.json`
+- `restorePatch` 恢复原始 CSP 和 `workbench.html`，并重算校验和
+- `fixChecksums` 用于残留的「其它工具改过文件」场景（例如手动注入过 `workbench.js`）：重算所有不匹配项，备份 `product.json.bilibili-backup`
+
+实测：把 `workbench.html` 与 `workbench.js` 的校验和都修正后，重启 VS Code 不再出现「安装已损坏」提示。
+
+## 5. 透明工作台
+
+注入的 CSS 让工作台各层透明，视频层在 `z-index:-1`：
+
+```css
+body.bili-skin-on,
+body.bili-skin-on .monaco-workbench,
+body.bili-skin-on .monaco-workbench .monaco-grid-view, /* 1.147 新布局，关键 */
+body.bili-skin-on .monaco-workbench .monaco-grid-view .split-view-view,
+body.bili-skin-on .monaco-workbench .part.editor,
+body.bili-skin-on .monaco-workbench .monaco-editor,
+body.bili-skin-on .monaco-workbench .monaco-editor .monaco-editor-background,
+body.bili-skin-on .monaco-workbench .monaco-editor .margin {
+  background-color: transparent !important;
+}
+```
+
+- VS Code 1.147 的 `.monaco-grid-view` 默认是 `rgb(25,26,27)` 不透明全屏容器，不覆盖它视频就会被完全挡住（调试时踩过）
+- 侧边栏/状态栏/标签栏用 `color-mix(... 60%, transparent)` 保留主题色与可读性
+- 视频层固定全屏、`object-fit` 可调、`opacity`/`blur`/暗化层由 HUD 控制
+- 视频层 `pointer-events: none`，不影响代码点击
+
+## 6. 播放链路
+
+```
+HUD → fetch 127.0.0.1:17321/api/play
+    → 扩展宿主 BiliClient
+        GET api.bilibili.com/x/web-interface/view      (bvid → cid/title)
+        GET api.bilibili.com/x/player/playurl          (fnval=1&platform=html5&qn=...)
+    ← data.durl[0].url / backup_url
+HUD 设置 <video src="https://*.bilivideo.com/....mp4">
+```
+
+- 请求头带 `Referer: https://www.bilibili.com/`、桌面 UA、登录 Cookie
+- 实测 CDN 支持 Range 且不强制 Referer；媒体流**不经过本地服务器**，省带宽、无代理的 Range/超时问题
+- `platform=html5` 让 B 站返回 mp4，而不是浏览器不能播的 FLV
+- 地址有时效；`onError` 先切 `backup_url`，再提示重试
+
+清晰度：`accept_quality` / `accept_description` 原样给 HUD 选择；未登录一般最高 720P。1080P+/4K 需要 `fnval=16` DASH + MSE（shaka-player/mp4box），未实现。
+
+## 7. 扫码登录
+
+```
+HUD 点击「扫码登录」
+  GET /api/login/qr
+    → passport.bilibili.com/x/passport-login/web/qrcode/generate
+    → qrcode.toDataURL() 返回 data:image/png
+  HUD 每 2s GET /api/login/poll?key=...
+    → code 86101 未扫码 / 86090 已扫码 / 0 成功 / 86038 过期
+    → 成功后读取 Set-Cookie，存 context.secrets
+    → GET api.bilibili.com/x/web-interface/nav 获取用户名/头像/VIP
+```
+
+Cookie 只存本地 `SecretStorage`；HUD 只拿到 `{ name, face, vip }`，不暴露 SESSDATA。
+
+## 8. 本地 API 与安全
+
+- 只监听 `127.0.0.1`，端口 17321–17330（多窗口/端口占用自动顺延）
+- 每个请求校验 `x-bili-token`（随机 24 字节 hex，存 `globalState`，并写入 workbench 同目录的 config 供 HUD 读取）
+- CORS 允许 `vscode-file://` 页面并处理 `OPTIONS` / Private Network Access
+- 端口发现：HUD 从 config 的端口开始，失败后扫描 17321–17330，适配多窗口
+- 登录态失效时 HUD 显示未登录，不影响未登录播放
+
+## 9. 注入生命周期
+
+- **应用**：确认弹窗 → 备份 `workbench.html` / `product.json` 到 `globalStorage/workbench-backups/<version>/` → 重写 CSP → 注入 → 写 3 个资源 → 更新校验和 → 可选立即重载
+- **更新皮肤**：重复应用会先剥离旧块（幂等），换 `?v=`，重新写入
+- **还原**：剥离注入块、按 sidecar 恢复原始 CSP、写入原 HTML 等价内容、重算校验和、删除皮肤文件
+- **VS Code 升级后**：HTML 被覆盖，`isPatched` 返回 false；用户重新应用即可。旧资源文件残留无害，会被覆盖
+- **旧手动补丁**：检测 `#bilibili-background-video`（之前注入 workbench.js 的后台视频），显示期间 `display:none`，隐藏时恢复
+
+## 10. 安全与合规
+
+- 只在用户显式执行「应用皮肤」时修改安装目录，首次弹确认
+- 修改前备份，一键还原
+- 不提供下载/缓存/转码；不绕过付费/会员内容
+- 修复校验和需用户显式确认，并说明用途
+- 若上架扩展市场：默认安全模式，注入模式需用户手动开启，并在 README 说明风险

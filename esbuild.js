@@ -11,6 +11,9 @@ const shared = {
   minify: production,
   sourcemap: production ? false : 'inline',
   logLevel: 'info',
+  define: {
+    'process.env.NODE_ENV': production ? '"production"' : '"development"',
+  },
 };
 
 const builds = [
@@ -23,6 +26,16 @@ const builds = [
     format: 'cjs',
     target: 'node20',
     external: ['vscode'],
+  },
+  // 注入到工作台渲染进程的皮肤（浏览器 / IIFE）
+  {
+    ...shared,
+    entryPoints: ['src/skin/main.tsx'],
+    outfile: 'dist/skin.js',
+    platform: 'browser',
+    format: 'iife',
+    target: 'chrome120',
+    jsx: 'automatic',
   },
 ];
 
