@@ -47,6 +47,15 @@ pnpm run vsix
 - 如果已经应用过皮肤：重新编译后要再执行一次 `B站皮肤: 应用皮肤`（或「仅应用」后重载），因为注入到 workbench 目录的是构建产物副本
 - 皮肤更新后重载窗口才会生效（命令里选「应用并重载」会自动重载）
 
+### F5 没反应 / 没有打开新窗口？
+
+- F5 会打开一个**新窗口**，标题类似 `[Extension Development Host] vscode_bilibili_player`；命令面板操作要在**新窗口**里做，不是原来那个窗口
+- 先确认 `dist/extension.js` 存在：在项目终端执行 `pnpm run compile`
+- 之前的 `.vscode/launch.json` 在 F5 前调用了 `pnpm`，但 macOS 从 Dock 启动的 VS Code 的 `PATH` 只有 `/usr/bin:/bin:/usr/sbin:/sbin`，找不到 pnpm，任务失败就不会启动扩展宿主。现已移除 `preLaunchTask`，所以 F5 不再依赖 pnpm；改完代码先在终端编译，再按 F5
+- 工作区如果处于 Restricted Mode（不受信任），扩展调试会被禁用：命令面板运行 `Workspaces: Trust` 信任本目录
+- 如果按 F5 弹出 “Select environment”，选 **VS Code Extension Development**
+- 还是不行就直接装 VSIX（方式 B），不依赖 F5
+
 > 「应用皮肤」会修改 VS Code 安装目录中的 `workbench.html`（以及写入 3 个皮肤文件），需要当前用户对安装目录有写权限。macOS 正常安装在 `/Applications` 时一般可直接写入。
 
 ## 命令

@@ -6,6 +6,7 @@
 - 新增扩展图标与 HUD 头像 logo（`src/asset/logo.png` 裁剪为 128/96px）
 - 新增 `pnpm run vsix` 打包命令
 - 补充“compile 后为什么没效果”的说明
+- 修复 F5 无法启动扩展宿主：移除 `preLaunchTask`（macOS GUI 的 PATH 找不到 pnpm）
 
 ## 0.1.0
 
