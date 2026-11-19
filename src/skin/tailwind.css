@@ -117,6 +117,11 @@
   line-height: 1.4;
 }
 
+/* HUD 根节点可命中，保证 pointerenter/leave 在整块插件区域都可靠触发 */
+.bili-hud {
+  pointer-events: auto;
+}
+
 /* 面板和胶囊共用右下角锚点，切换时用 transform 从对方的矩形长出来。 */
 .bili-dock {
   position: relative;
