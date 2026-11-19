@@ -23,6 +23,7 @@ import {
   Volume,
   X,
 } from '@ricons/tabler';
+import { MoreHorizTwotone } from '@ricons/material';
 import { parseVideoInput } from '../bilibili/parse';
 import type {
   LoginQr,
@@ -91,6 +92,8 @@ export function Hud({ config, videoHost }: HudProps) {
   const [error, setError] = useState<string | null>(null);
   const [open, setOpen] = useState(true);
   const [hudHovered, setHudHovered] = useState(false);
+  const [pillWide, setPillWide] = useState(false);
+  const pillExpandedAt = useRef(0);
   const [input, setInput] = useState('');
   const [playing, setPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
@@ -368,6 +371,17 @@ export function Hud({ config, videoHost }: HudProps) {
       setHudHovered(false);
     }
   }, [visible]);
+
+  // 面板展开时胶囊保持宽条；收起后如果鼠标不在 HUD 上就回到迷你。
+  useEffect(() => {
+    if (open) {
+      setPillWide(true);
+      return;
+    }
+    if (pillWide && !hudHovered) {
+      setPillWide(false);
+    }
+  }, [open, pillWide, hudHovered]);
 
   // 自动播放策略：用户第一次点击/按键时，在真实手势里再尝试播放独立音轨/取消静音。
   useEffect(() => {
@@ -1860,7 +1874,7 @@ export function Hud({ config, videoHost }: HudProps) {
             className="bili-pill"
             ref={pillRef}
             data-inactive={open}
-            data-mini={!open && !hudHovered}
+            data-mini={!open && !pillWide}
             aria-hidden={open}
             inert={open}
           >
@@ -1890,9 +1904,27 @@ export function Hud({ config, videoHost }: HudProps) {
                 className="bili-icon-btn"
                 title="隐藏皮肤"
                 aria-label="隐藏皮肤"
-                onClick={() => void hideSkin()}
+                onClick={() => {
+                  // 从迷你展开后，鼠标位置正好落在右侧的 X 上，避免误触
+                  if (Date.now() - pillExpandedAt.current < 400) {
+                    return;
+                  }
+                  void hideSkin();
+                }}
               >
                 <X width={14} height={14} />
+              </button>
+              <button
+                type="button"
+                className="bili-icon-btn bili-mini-btn"
+                title="展开控制条"
+                aria-label="展开控制条"
+                onClick={() => {
+                  pillExpandedAt.current = Date.now();
+                  setPillWide(true);
+                }}
+              >
+                <MoreHorizTwotone width={16} height={16} />
               </button>
             </div>
           </div>

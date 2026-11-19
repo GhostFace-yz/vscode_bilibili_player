@@ -168,7 +168,7 @@
   max-width: calc(100vw - 36px);
   overflow: hidden;
   padding: 8px 12px;
-  transition: width 460ms cubic-bezier(0.22, 1, 0.36, 1), padding 460ms cubic-bezier(0.22, 1, 0.36, 1);
+  transition: width 760ms cubic-bezier(0.22, 1, 0.36, 1), padding 760ms cubic-bezier(0.22, 1, 0.36, 1);
   border: 1px solid var(--bili-border);
   border-radius: 999px;
   background: var(--bili-bg);
@@ -202,18 +202,31 @@
   justify-content: center;
 }
 
-.bili-pill[data-mini='true'] .bili-pill-content > :not(.bili-play-btn) {
+.bili-pill[data-mini='true'] .bili-pill-content > :not(.bili-mini-btn) {
   display: none;
 }
 
-/* 收到迷你状态时播放图标转一整圈；展开时反向转回 */
-.bili-pill .bili-play-btn svg {
-  transform: rotate(0deg);
-  transition: transform 460ms cubic-bezier(0.22, 1, 0.36, 1);
+/* 迷你态只显示 MoreHoriz（Tabler Dots）按钮；宽胶囊里隐藏它 */
+.bili-pill .bili-mini-btn {
+  display: none;
 }
 
-.bili-pill[data-mini='true'] .bili-play-btn svg {
-  transform: rotate(360deg);
+.bili-pill[data-mini='true'] .bili-mini-btn {
+  display: inline-flex;
+}
+
+/* 收进迷你时三个点转一圈 */
+.bili-pill[data-mini='true'] .bili-mini-btn svg {
+  animation: bili-mini-spin 760ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes bili-mini-spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 /* ---------- shadcn Switch ---------- */
