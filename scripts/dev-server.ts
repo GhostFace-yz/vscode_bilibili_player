@@ -35,6 +35,7 @@ async function main(): Promise<void> {
     settings: { ...DEFAULT_SKIN_SETTINGS, quality: Number(process.env.BILI_QN ?? 80) },
     loggedIn: auth.loggedIn,
     user: auth.user,
+    authRevision: auth.authRevision,
   };
 
   const server = await startApiServer({
@@ -44,6 +45,7 @@ async function main(): Promise<void> {
       ...state,
       loggedIn: auth.loggedIn,
       user: auth.user,
+      authRevision: auth.authRevision,
     }),
     patchState: async (patch: StatePatch) => {
       if (typeof patch.visible === 'boolean') {
@@ -58,7 +60,7 @@ async function main(): Promise<void> {
       if (patch.settings) {
         state.settings = { ...state.settings, ...patch.settings };
       }
-      return { ...state, loggedIn: auth.loggedIn, user: auth.user };
+      return { ...state, loggedIn: auth.loggedIn, user: auth.user, authRevision: auth.authRevision };
     },
     getPlayInfo: (ref: VideoRef, qn: number) => getPlayInfo(auth.client(), ref, qn),
     loginQr: () => auth.generateQr(),

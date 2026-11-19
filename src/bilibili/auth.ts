@@ -42,6 +42,7 @@ export class BiliAuth {
   private cookies: CookieJar = {};
   private refreshToken: string | undefined;
   private cachedUser: BiliUser | null = null;
+  private revision = 0;
   private readonly pendingQr = new Map<string, QrEntry>();
 
   constructor(
@@ -55,6 +56,10 @@ export class BiliAuth {
 
   get loggedIn(): boolean {
     return this.cachedUser !== null;
+  }
+
+  get authRevision(): number {
+    return this.revision;
   }
 
   jar(): CookieJar {
@@ -161,6 +166,7 @@ export class BiliAuth {
         this.refreshToken = data.refresh_token || this.refreshToken;
         await this.persist();
         await this.refreshUser();
+        this.revision += 1;
         this.pendingQr.delete(key);
         return { status: 'success', user: this.cachedUser ?? undefined };
       }
@@ -181,6 +187,7 @@ export class BiliAuth {
     this.refreshToken = undefined;
     this.cachedUser = null;
     this.pendingQr.clear();
+    this.revision += 1;
     await this.store.delete(AUTH_SECRET_KEY);
   }
 

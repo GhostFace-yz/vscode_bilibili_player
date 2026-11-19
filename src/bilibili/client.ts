@@ -14,6 +14,14 @@ export interface ViewPage {
   duration: number;
 }
 
+export interface SeasonEpisode {
+  aid?: number;
+  bvid: string;
+  cid: number;
+  title: string;
+  page?: { cid?: number; page?: number; part?: string };
+}
+
 export interface ViewData {
   bvid: string;
   aid: number;
@@ -23,6 +31,10 @@ export interface ViewData {
   duration: number;
   owner: { name: string };
   pages?: ViewPage[];
+  ugc_season?: {
+    title?: string;
+    sections?: { episodes?: SeasonEpisode[] }[];
+  };
 }
 
 export interface DurlSegment {

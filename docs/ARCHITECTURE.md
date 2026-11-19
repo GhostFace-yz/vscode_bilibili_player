@@ -2,7 +2,7 @@
 
 目标：视频不是挤在侧边栏或标签页里，而是铺在 VS Code 工作台**最底层**，代码浮在视频之上。
 
-v0.1.0 已按「工作台注入 + 直连播放」实现，并在 macOS + VS Code 1.147.0 上实测。
+v0.2.0 已按「工作台注入 + 直连播放」实现，并在 macOS + VS Code 1.147.0 上实测。
 
 ## 1. 路线选择
 
@@ -109,9 +109,18 @@ HUD 设置 <video src="https://*.bilivideo.com/....mp4">
 - `platform=html5` 让 B 站返回 mp4，而不是浏览器不能播的 FLV
 - 地址有时效；`onError` 先切 `backup_url`，再提示重试
 
-清晰度：`accept_quality` / `accept_description` 原样给 HUD 选择；未登录一般最高 720P。1080P+/4K 需要 `fnval=16` DASH + MSE（shaka-player/mp4box），未实现。
+清晰度：`accept_quality` / `accept_description` 原样给 HUD 选择。未登录一般最高 720P；登录后通过 `platform=html5&high_quality=1` 可拿到 1080P。登录/退出会递增 `authRevision`，HUD 检测到后自动重拉 playurl 刷新清晰度列表。1080P+/4K 仍建议走 `fnval=16` DASH + MSE（后续）。
 
-## 7. 扫码登录
+## 7. 上下集与合集
+
+`view` 返回：
+
+- `pages[]`：多 P 视频，每个 P 有 `cid/page/part`
+- `ugc_season.sections[].episodes[]`：B 站合集/season，每个 episode 有 `bvid/cid/title/page`
+
+`getPlayInfo()` 把它们统一成 `episodes[]`，并计算当前 `episodeIndex`。HUD 在集数 > 1 时显示上一集/下一集和选集下拉；切换时用目标 `bvid + page` 重新请求 playurl，并同步皮肤状态。
+
+## 8. 扫码登录
 
 ```
 HUD 点击「扫码登录」
@@ -126,7 +135,7 @@ HUD 点击「扫码登录」
 
 Cookie 只存本地 `SecretStorage`；HUD 只拿到 `{ name, face, vip }`，不暴露 SESSDATA。
 
-## 8. 本地 API 与安全
+## 9. 本地 API 与安全
 
 - 只监听 `127.0.0.1`，端口 17321–17330（多窗口/端口占用自动顺延）
 - 每个请求校验 `x-bili-token`（随机 24 字节 hex，存 `globalState`，并写入 workbench 同目录的 config 供 HUD 读取）
@@ -134,7 +143,7 @@ Cookie 只存本地 `SecretStorage`；HUD 只拿到 `{ name, face, vip }`，不�
 - 端口发现：HUD 从 config 的端口开始，失败后扫描 17321–17330，适配多窗口
 - 登录态失效时 HUD 显示未登录，不影响未登录播放
 
-## 9. 注入生命周期
+## 10. 注入生命周期
 
 - **应用**：确认弹窗 → 备份 `workbench.html` / `product.json` 到 `globalStorage/workbench-backups/<version>/` → 重写 CSP → 注入 → 写 3 个资源 → 更新校验和 → 可选立即重载
 - **更新皮肤**：重复应用会先剥离旧块（幂等），换 `?v=`，重新写入
@@ -142,7 +151,7 @@ Cookie 只存本地 `SecretStorage`；HUD 只拿到 `{ name, face, vip }`，不�
 - **VS Code 升级后**：HTML 被覆盖，`isPatched` 返回 false；用户重新应用即可。旧资源文件残留无害，会被覆盖
 - **旧手动补丁**：检测 `#bilibili-background-video`（之前注入 workbench.js 的后台视频），显示期间 `display:none`，隐藏时恢复
 
-## 10. 安全与合规
+## 11. 安全与合规
 
 - 只在用户显式执行「应用皮肤」时修改安装目录，首次弹确认
 - 修改前备份，一键还原

@@ -37,7 +37,7 @@
 
 .bili-panel {
   pointer-events: auto;
-  width: 380px;
+  width: 400px;
   overflow: hidden;
   border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 16px;
@@ -74,13 +74,80 @@
   border-radius: 6px;
   background: transparent;
   color: #a1a1aa;
-  font-size: 14px;
   line-height: 1;
+  transition: background-color 0.15s ease, color 0.15s ease, transform 0.15s ease;
 }
 
-#bili-skin-hud .bili-icon-btn:hover {
+#bili-skin-hud .bili-icon-btn:hover:not(:disabled) {
   background: rgba(255, 255, 255, 0.1);
   color: #f4f4f5;
+}
+
+#bili-skin-hud .bili-icon-btn:active:not(:disabled) {
+  transform: scale(0.92);
+}
+
+#bili-skin-hud .bili-icon-btn:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
+#bili-skin-hud .bili-icon-btn.bili-muted {
+  position: relative;
+}
+
+#bili-skin-hud .bili-icon-btn.bili-muted::after {
+  position: absolute;
+  left: 3px;
+  right: 3px;
+  top: 50%;
+  height: 1.5px;
+  border-radius: 2px;
+  background: currentColor;
+  transform: rotate(-45deg);
+  content: '';
+}
+
+#bili-skin-hud .bili-play-btn {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border: 0;
+  border-radius: 999px;
+  background: #fb7299;
+  color: #09090b;
+  transition: background-color 0.15s ease, transform 0.15s ease;
+}
+
+#bili-skin-hud .bili-play-btn:hover {
+  background: #ff8aae;
+}
+
+#bili-skin-hud .bili-play-btn:active {
+  transform: scale(0.94);
+}
+
+#bili-skin-hud .bili-play-btn-small {
+  width: 28px;
+  height: 28px;
+}
+
+#bili-skin-hud .bili-login-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 0;
+  border: 0;
+  background: transparent;
+  color: #fb7299;
+  font-size: 11px;
+}
+
+#bili-skin-hud .bili-login-btn:hover {
+  text-decoration: underline;
 }
 
 #bili-skin-hud .bili-link-btn {
@@ -132,16 +199,146 @@
   background: #ff8aae;
 }
 
-#bili-skin-hud .bili-select {
-  height: 26px;
+/* shadcn/ui Select（Radix）注入样式：Portal 在 body，故使用全局 .bili-select-* 类 */
+.bili-select-trigger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px;
   max-width: 104px;
-  padding: 0 4px;
+  height: 26px;
+  padding: 0 6px;
   border: 1px solid rgba(255, 255, 255, 0.12);
   border-radius: 6px;
   background: rgba(0, 0, 0, 0.35);
   color: #e4e4e7;
+  font-family: var(--vscode-font-family, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif);
   font-size: 11px;
+  line-height: 1;
   outline: none;
+  transition: border-color 0.15s ease, background-color 0.15s ease;
+}
+
+.bili-select-trigger > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.bili-select-trigger:hover {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.bili-select-trigger:focus-visible {
+  border-color: rgba(251, 114, 153, 0.7);
+}
+
+.bili-select-trigger[data-placeholder] {
+  color: #71717a;
+}
+
+.bili-quality-trigger {
+  max-width: 98px;
+}
+
+.bili-fit-trigger {
+  max-width: 62px;
+}
+
+.bili-episode-trigger {
+  flex: 1 1 auto;
+  width: 100%;
+  max-width: none;
+}
+
+.bili-select-content {
+  position: relative;
+  z-index: 2147483001;
+  min-width: 120px;
+  max-width: 300px;
+  max-height: var(--radix-select-content-available-height, 260px);
+  overflow: hidden;
+  padding: 4px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 10px;
+  background: #101014;
+  color: #e4e4e7;
+  font-family: var(--vscode-font-family, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif);
+  font-size: 11px;
+  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.6);
+  pointer-events: auto;
+}
+
+.bili-select-content[data-state='open'] {
+  animation: bili-select-in 0.12s ease-out;
+}
+
+.bili-select-viewport {
+  max-height: var(--radix-select-content-available-height, 260px);
+  overflow-y: auto;
+  padding: 2px;
+}
+
+.bili-select-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px;
+  border-radius: 6px;
+  color: #d4d4d8;
+  cursor: pointer;
+  outline: none;
+  user-select: none;
+}
+
+.bili-select-item[data-highlighted] {
+  background: rgba(255, 255, 255, 0.08);
+  color: #fafafa;
+}
+
+.bili-select-item[data-state='checked'] {
+  color: #fb7299;
+}
+
+.bili-select-item[data-disabled] {
+  opacity: 0.45;
+  pointer-events: none;
+}
+
+.bili-select-item-indicator {
+  display: flex;
+  width: 14px;
+  flex: 0 0 14px;
+  align-items: center;
+  justify-content: center;
+}
+
+.bili-select-scroll {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 22px;
+  color: #a1a1aa;
+}
+
+@keyframes bili-select-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .bili-select-content[data-state='open'] {
+    animation: none;
+  }
+
+  #bili-skin-hud .bili-play-btn,
+  #bili-skin-hud .bili-icon-btn {
+    transition: none;
+  }
 }
 
 #bili-skin-hud .bili-range {

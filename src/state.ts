@@ -34,6 +34,7 @@ export class ExtensionState {
       settings: getSkinSettings(),
       loggedIn: this.auth.loggedIn,
       user: this.auth.user,
+      authRevision: this.auth.authRevision,
     };
   }
 

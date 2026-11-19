@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.2.0
+
+- HUD 图标全部替换为 xicons（Tabler），移除 emoji/字符图标
+- 清晰度/铺满方式/选集下拉改用 shadcn/ui 风格 Radix Select
+- HUD 收起/展开、登录弹窗、面板进出使用 GSAP 动画
+- 登录/退出后自动刷新 playurl，清晰度列表即时更新；新增手动刷新清晰度按钮
+- 支持多 P 视频与 B 站合集/season 的上一集/下一集/选集切换
+
 ## 0.1.1
 
 - 包管理切换到 pnpm（移除 package-lock.json，新增 pnpm-lock.yaml）

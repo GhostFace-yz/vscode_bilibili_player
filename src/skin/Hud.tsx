@@ -1,5 +1,20 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { createPortal } from 'react-dom';
+import { gsap } from 'gsap';
+import { useGSAP } from '@gsap/react';
+import {
+  ChevronLeft,
+  ChevronRight,
+  Minus,
+  PlayerPause,
+  PlayerPlay,
+  Qrcode,
+  Refresh,
+  Settings,
+  UserCircle,
+  Volume,
+  X,
+} from '@ricons/tabler';
 import { parseVideoInput } from '../bilibili/parse';
 import type {
   LoginQr,
@@ -10,8 +25,17 @@ import type {
   VideoRef,
 } from '../shared/types';
 import { DEFAULT_SKIN_SETTINGS } from '../shared/types';
-import logoUrl from './logo.png';
 import { SkinApi } from './api';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from './components/ui/select';
+import logoUrl from './logo.png';
+
+gsap.registerPlugin(useGSAP);
 
 interface HudProps {
   config: SkinConfig;
@@ -19,10 +43,17 @@ interface HudProps {
 }
 
 const QUALITY_CHOICES = [16, 32, 64, 74, 80, 112, 116, 120];
+const REDUCED_MOTION =
+  typeof window !== 'undefined' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
 export function Hud({ config, videoHost }: HudProps) {
   const api = useMemo(() => new SkinApi(config), [config]);
   const videoRef = useRef<HTMLVideoElement | null>(null);
+  const hudRootRef = useRef<HTMLDivElement | null>(null);
+  const panelRef = useRef<HTMLDivElement | null>(null);
+  const pillRef = useRef<HTMLDivElement | null>(null);
+  const modalOverlayRef = useRef<HTMLDivElement | null>(null);
+  const modalRef = useRef<HTMLDivElement | null>(null);
 
   const [state, setState] = useState<SkinState | null>(null);
   const [settings, setSettings] = useState<SkinSettings>(DEFAULT_SKIN_SETTINGS);
@@ -56,6 +87,7 @@ export function Hud({ config, videoHost }: HudProps) {
   const backupIndex = useRef(0);
   const pendingSeek = useRef(0);
   const initialized = useRef(false);
+  const lastAuthRevision = useRef<number | null>(null);
   const saveTimer = useRef<number | undefined>(undefined);
   const pendingSave = useRef<Partial<SkinSettings>>({});
 
@@ -106,7 +138,7 @@ export function Hud({ config, videoHost }: HudProps) {
   }, [state]);
 
   const load = useCallback(
-    async (ref: VideoRef, qn: number) => {
+    async (ref: VideoRef, qn: number): Promise<boolean> => {
       setLoading(true);
       setError(null);
       try {
@@ -115,14 +147,25 @@ export function Hud({ config, videoHost }: HudProps) {
         setSrcUrl(next.url);
         backupIndex.current = 0;
         setDuration(next.duration || 0);
+        return true;
       } catch (loadError) {
         setError(toMessage(loadError));
+        return false;
       } finally {
         setLoading(false);
       }
     },
     [api],
   );
+
+  const refreshPlayInfo = useCallback(() => {
+    const ref = stateRef.current?.video;
+    if (!ref) {
+      return;
+    }
+    pendingSeek.current = videoRef.current?.currentTime ?? 0;
+    void load(ref, settingsRef.current.quality);
+  }, [load]);
 
   const videoKey = state?.video
     ? `${state.video.bvid ?? `av${state.video.aid ?? ''}`}:${state.video.page ?? 1}`
@@ -151,8 +194,7 @@ export function Hud({ config, videoHost }: HudProps) {
     }
   }, [visible]);
 
-  // 有些用户之前用脚本注入过后台视频（#bilibili-background-video），它和本皮肤同为
-  // z-index:-1 且更晚插入 DOM，会盖住我们的视频。显示皮肤时临时隐藏它。
+  // 旧版 douyinhelper/bilibilihelper 注入的 #bilibili-background-video 会盖住我们的视频。
   useEffect(() => {
     if (!visible) {
       return;
@@ -194,6 +236,21 @@ export function Hud({ config, videoHost }: HudProps) {
       setLoginOpen(true);
     }
   }, [state?.openLogin]);
+
+  // 登录/退出后重新拉取 playurl，刷新清晰度列表
+  useEffect(() => {
+    if (!state) {
+      return;
+    }
+    if (lastAuthRevision.current === null) {
+      lastAuthRevision.current = state.authRevision;
+      return;
+    }
+    if (lastAuthRevision.current !== state.authRevision) {
+      lastAuthRevision.current = state.authRevision;
+      refreshPlayInfo();
+    }
+  }, [state?.authRevision, state, refreshPlayInfo]);
 
   useEffect(() => {
     const video = videoRef.current;
@@ -260,6 +317,80 @@ export function Hud({ config, videoHost }: HudProps) {
     [persistSettings],
   );
 
+  const { contextSafe } = useGSAP(
+    () => {
+      const target = open ? panelRef.current : pillRef.current;
+      if (!target) {
+        return;
+      }
+      gsap.from(target, {
+        autoAlpha: 0,
+        y: open ? 10 : 6,
+        scale: open ? 0.97 : 0.95,
+        duration: REDUCED_MOTION ? 0 : 0.22,
+        ease: 'power2.out',
+      });
+    },
+    { scope: hudRootRef, dependencies: [open], revertOnUpdate: true },
+  );
+
+  useGSAP(
+    () => {
+      if (!loginOpen) {
+        return;
+      }
+      const timeline = gsap.timeline();
+      if (modalOverlayRef.current) {
+        timeline.from(modalOverlayRef.current, { autoAlpha: 0, duration: REDUCED_MOTION ? 0 : 0.18 }, 0);
+      }
+      if (modalRef.current) {
+        timeline.from(
+          modalRef.current,
+          { autoAlpha: 0, y: 8, scale: 0.96, duration: REDUCED_MOTION ? 0 : 0.2, ease: 'power2.out' },
+          0,
+        );
+      }
+    },
+    { scope: hudRootRef, dependencies: [loginOpen], revertOnUpdate: true },
+  );
+
+  const collapsePanel = contextSafe(() => {
+    if (!panelRef.current || REDUCED_MOTION) {
+      setOpen(false);
+      return;
+    }
+    gsap.to(panelRef.current, {
+      autoAlpha: 0,
+      y: 8,
+      scale: 0.96,
+      duration: 0.16,
+      ease: 'power1.in',
+      onComplete: () => setOpen(false),
+    });
+  });
+
+  const closeLogin = contextSafe(() => {
+    if (!loginOpen) {
+      return;
+    }
+    if (!modalRef.current || !modalOverlayRef.current || REDUCED_MOTION) {
+      setLoginOpen(false);
+      setQr(null);
+      return;
+    }
+    gsap.to(modalOverlayRef.current, { autoAlpha: 0, duration: 0.14 });
+    gsap.to(modalRef.current, {
+      autoAlpha: 0,
+      scale: 0.97,
+      y: 6,
+      duration: 0.14,
+      onComplete: () => {
+        setLoginOpen(false);
+        setQr(null);
+      },
+    });
+  });
+
   const loadManual = async () => {
     const ref = parseVideoInput(input);
     if (!ref) {
@@ -268,11 +399,13 @@ export function Hud({ config, videoHost }: HudProps) {
     }
 
     requestedKey.current = `${ref.bvid ?? `av${ref.aid ?? ''}`}:${ref.page ?? 1}`;
-    await load(ref, settings.quality);
-    try {
-      await api.patch({ video: { bvid: ref.bvid, aid: ref.aid, page: ref.page }, visible: true });
-    } catch {
-      setOnline(false);
+    const loaded = await load(ref, settings.quality);
+    if (loaded) {
+      try {
+        await api.patch({ video: { bvid: ref.bvid, aid: ref.aid, page: ref.page }, visible: true });
+      } catch {
+        setOnline(false);
+      }
     }
   };
 
@@ -284,6 +417,24 @@ export function Hud({ config, videoHost }: HudProps) {
     pendingSeek.current = videoRef.current?.currentTime ?? 0;
     updateSettings({ quality: qn });
     await load(ref, qn);
+  };
+
+  const switchEpisode = async (index: number) => {
+    const episode = info?.episodes[index];
+    if (!episode || !info || index === info.episodeIndex) {
+      return;
+    }
+    requestedKey.current = `${episode.bvid}:${episode.page}`;
+    pendingSeek.current = 0;
+    setInput(episode.bvid);
+    const loaded = await load({ bvid: episode.bvid, page: episode.page }, settings.quality);
+    if (loaded) {
+      try {
+        await api.patch({ video: { bvid: episode.bvid, page: episode.page }, visible: true });
+      } catch {
+        setOnline(false);
+      }
+    }
   };
 
   const togglePlay = () => {
@@ -404,6 +555,20 @@ export function Hud({ config, videoHost }: HudProps) {
     info?.qualities.find((quality) => quality.qn === info.quality)?.desc ??
     (info ? `${info.quality}P` : '');
 
+  const qualityItems = (() => {
+    const items = info?.qualities?.length
+      ? [...info.qualities]
+      : QUALITY_CHOICES.map((qn) => ({ qn, desc: `qn ${qn}` }));
+    const current = info?.quality ?? settings.quality;
+    if (!items.some((item) => item.qn === current)) {
+      items.unshift({ qn: current, desc: `qn ${current}` });
+    }
+    return items;
+  })();
+
+  const episodeLabel =
+    info && info.episodes.length > 1 ? `第 ${info.episodeIndex + 1}/${info.episodes.length} 集` : '';
+
   const videoLayer = (
     <div id="bili-skin-video-layer" style={layerStyle}>
       {srcUrl ? (
@@ -432,22 +597,18 @@ export function Hud({ config, videoHost }: HudProps) {
   return (
     <>
       {createPortal(videoLayer, videoHost)}
-      <div className="bili-hud">
+      <div className="bili-hud" ref={hudRootRef}>
         {open ? (
-          <div className="bili-panel">
+          <div className="bili-panel" ref={panelRef}>
             <div className="bp-flex bp-items-center bp-gap-2 bp-border-b bp-border-white/10 bp-px-3 bp-py-2.5">
-              <img
-                className="bp-h-6 bp-w-6 bp-shrink-0 bp-rounded-md bp-object-cover"
-                src={logoUrl}
-                alt=""
-              />
+              <img className="bp-h-6 bp-w-6 bp-shrink-0 bp-rounded-md bp-object-cover" src={logoUrl} alt="" />
               <div className="bp-min-w-0 bp-flex-1">
                 <div className="bp-truncate bp-text-[13px] bp-font-medium">
                   {info?.title ?? '未加载视频'}
                 </div>
                 <div className="bp-truncate bp-text-[11px] bp-text-zinc-400">
                   {info
-                    ? `${info.owner} · ${qualityLabel} · ${formatTime(currentTime)} / ${formatTime(duration)}`
+                    ? `${info.owner} · ${qualityLabel}${episodeLabel ? ` · ${episodeLabel}` : ''} · ${formatTime(currentTime)} / ${formatTime(duration)}`
                     : '输入 BV 号或链接，把视频铺到代码下面'}
                 </div>
               </div>
@@ -456,9 +617,9 @@ export function Hud({ config, videoHost }: HudProps) {
                 className="bili-icon-btn"
                 title="收起"
                 aria-label="收起控制条"
-                onClick={() => setOpen(false)}
+                onClick={collapsePanel}
               >
-                —
+                <Minus width={15} height={15} />
               </button>
               <button
                 type="button"
@@ -467,7 +628,7 @@ export function Hud({ config, videoHost }: HudProps) {
                 aria-label="隐藏皮肤"
                 onClick={() => void hideSkin()}
               >
-                ×
+                <X width={15} height={15} />
               </button>
             </div>
 
@@ -475,11 +636,11 @@ export function Hud({ config, videoHost }: HudProps) {
               <div className="bp-flex bp-items-center bp-gap-2.5">
                 <button
                   type="button"
-                  className="bp-flex bp-h-9 bp-w-9 bp-shrink-0 bp-items-center bp-justify-center bp-rounded-full bp-bg-[#fb7299] bp-text-[13px] bp-text-black hover:bp-bg-[#ff8aae]"
+                  className="bili-play-btn"
                   aria-label={playing ? '暂停' : '播放'}
                   onClick={togglePlay}
                 >
-                  {playing ? '❚❚' : '▶'}
+                  {playing ? <PlayerPause width={16} height={16} /> : <PlayerPlay width={16} height={16} />}
                 </button>
                 <div className="bp-flex bp-min-w-0 bp-flex-1 bp-items-center bp-gap-2">
                   <input
@@ -507,7 +668,7 @@ export function Hud({ config, videoHost }: HudProps) {
               <div className="bp-flex bp-items-center bp-gap-2">
                 <button
                   type="button"
-                  className="bili-icon-btn"
+                  className={`bili-icon-btn ${muted ? 'bili-muted' : ''}`}
                   title={muted ? '取消静音' : '静音'}
                   aria-label={muted ? '取消静音' : '静音'}
                   onClick={() => {
@@ -516,10 +677,10 @@ export function Hud({ config, videoHost }: HudProps) {
                     updateSettings({ muted: next });
                   }}
                 >
-                  {muted ? '🔇' : '🔊'}
+                  <Volume width={15} height={15} />
                 </button>
                 <input
-                  className="bili-range bp-w-[74px]"
+                  className="bili-range bp-w-[64px]"
                   type="range"
                   min={0}
                   max={1}
@@ -532,34 +693,86 @@ export function Hud({ config, videoHost }: HudProps) {
                     setMuted(next === 0);
                   }}
                 />
-                <select
-                  className="bili-select bp-ml-auto"
-                  value={String(info?.quality ?? settings.quality)}
-                  title="清晰度"
-                  aria-label="清晰度"
-                  onChange={(event) => void changeQuality(Number(event.target.value))}
-                >
-                  {(info?.qualities?.length
-                    ? info.qualities
-                    : QUALITY_CHOICES.map((qn) => ({ qn, desc: `qn ${qn}` }))
-                  ).map((quality) => (
-                    <option key={quality.qn} value={quality.qn}>
-                      {quality.desc}
-                    </option>
-                  ))}
-                </select>
-                <select
-                  className="bili-select"
-                  value={settings.fit}
-                  title="铺满方式"
-                  aria-label="铺满方式"
-                  onChange={(event) => updateSettings({ fit: event.target.value as SkinSettings['fit'] })}
-                >
-                  <option value="cover">铺满</option>
-                  <option value="contain">完整</option>
-                  <option value="fill">拉伸</option>
-                </select>
+                <div className="bp-ml-auto bp-flex bp-items-center bp-gap-1.5">
+                  <button
+                    type="button"
+                    className="bili-icon-btn"
+                    title="刷新清晰度（登录后可用更高画质）"
+                    aria-label="刷新清晰度"
+                    onClick={refreshPlayInfo}
+                  >
+                    <Refresh width={13} height={13} />
+                  </button>
+                  <Select
+                    value={String(info?.quality ?? settings.quality)}
+                    onValueChange={(value) => void changeQuality(Number(value))}
+                  >
+                    <SelectTrigger className="bili-select-trigger bili-quality-trigger" aria-label="清晰度">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {qualityItems.map((quality) => (
+                        <SelectItem key={quality.qn} value={String(quality.qn)}>
+                          {quality.desc}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <Select
+                    value={settings.fit}
+                    onValueChange={(value) => updateSettings({ fit: value as SkinSettings['fit'] })}
+                  >
+                    <SelectTrigger className="bili-select-trigger bili-fit-trigger" aria-label="铺满方式">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="cover">铺满</SelectItem>
+                      <SelectItem value="contain">完整</SelectItem>
+                      <SelectItem value="fill">拉伸</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
               </div>
+
+              {info && info.episodes.length > 1 ? (
+                <div className="bp-flex bp-items-center bp-gap-1.5 bp-border-t bp-border-white/10 bp-pt-2">
+                  <button
+                    type="button"
+                    className="bili-icon-btn"
+                    title="上一集"
+                    aria-label="上一集"
+                    disabled={info.episodeIndex <= 0}
+                    onClick={() => void switchEpisode(info.episodeIndex - 1)}
+                  >
+                    <ChevronLeft width={15} height={15} />
+                  </button>
+                  <Select
+                    value={String(info.episodeIndex)}
+                    onValueChange={(value) => void switchEpisode(Number(value))}
+                  >
+                    <SelectTrigger className="bili-select-trigger bili-episode-trigger" aria-label="选择剧集">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {info.episodes.map((episode, index) => (
+                        <SelectItem key={`${episode.bvid}:${episode.page}:${index}`} value={String(index)}>
+                          {`第 ${index + 1} 集 · ${episode.title}`}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <button
+                    type="button"
+                    className="bili-icon-btn"
+                    title="下一集"
+                    aria-label="下一集"
+                    disabled={info.episodeIndex >= info.episodes.length - 1}
+                    onClick={() => void switchEpisode(info.episodeIndex + 1)}
+                  >
+                    <ChevronRight width={15} height={15} />
+                  </button>
+                </div>
+              ) : null}
 
               <SliderRow
                 label="透明度"
@@ -634,7 +847,8 @@ export function Hud({ config, videoHost }: HudProps) {
                         className="bp-h-5 bp-w-5 bp-rounded-full bp-object-cover"
                         src={state.user.face}
                         alt=""
-                                    />
+                        referrerPolicy="no-referrer"
+                      />
                       <span className="bp-max-w-[96px] bp-truncate bp-text-[11px] bp-text-zinc-300">
                         {state.user.name}
                       </span>
@@ -648,7 +862,8 @@ export function Hud({ config, videoHost }: HudProps) {
                       </button>
                     </>
                   ) : (
-                    <button type="button" className="bili-link-btn" onClick={() => setLoginOpen(true)}>
+                    <button type="button" className="bili-login-btn" onClick={() => setLoginOpen(true)}>
+                      <UserCircle width={13} height={13} />
                       扫码登录
                     </button>
                   )}
@@ -657,16 +872,16 @@ export function Hud({ config, videoHost }: HudProps) {
             </div>
           </div>
         ) : (
-          <div className="bili-pill">
+          <div className="bili-pill" ref={pillRef}>
             <button
               type="button"
-              className="bp-flex bp-h-7 bp-w-7 bp-items-center bp-justify-center bp-rounded-full bp-bg-[#fb7299] bp-text-[11px] bp-text-black"
+              className="bili-play-btn bili-play-btn-small"
               aria-label={playing ? '暂停' : '播放'}
               onClick={togglePlay}
             >
-              {playing ? '❚❚' : '▶'}
+              {playing ? <PlayerPause width={13} height={13} /> : <PlayerPlay width={13} height={13} />}
             </button>
-            <span className="bp-max-w-[180px] bp-truncate bp-text-[12px] bp-text-zinc-200">
+            <span className="bp-max-w-[200px] bp-truncate bp-text-[12px] bp-text-zinc-200">
               {info?.title ?? 'B站视频皮肤'}
             </span>
             <button
@@ -676,7 +891,7 @@ export function Hud({ config, videoHost }: HudProps) {
               aria-label="展开控制条"
               onClick={() => setOpen(true)}
             >
-              ⚙
+              <Settings width={14} height={14} />
             </button>
             <button
               type="button"
@@ -685,26 +900,32 @@ export function Hud({ config, videoHost }: HudProps) {
               aria-label="隐藏皮肤"
               onClick={() => void hideSkin()}
             >
-              ×
+              <X width={14} height={14} />
             </button>
           </div>
         )}
 
         {loginOpen ? (
-          <div className="bp-fixed bp-inset-0 bp-z-10 bp-flex bp-pointer-events-auto bp-items-center bp-justify-center bp-bg-black/60">
-            <div className="bp-w-[320px] bp-rounded-2xl bp-border bp-border-white/10 bp-bg-[#101014] bp-p-4 bp-text-zinc-100 bp-shadow-2xl">
+          <div
+            ref={modalOverlayRef}
+            className="bp-fixed bp-inset-0 bp-z-10 bp-flex bp-pointer-events-auto bp-items-center bp-justify-center bp-bg-black/60"
+            onClick={(event) => {
+              if (event.target === event.currentTarget) {
+                closeLogin();
+              }
+            }}
+          >
+            <div
+              ref={modalRef}
+              className="bp-w-[320px] bp-rounded-2xl bp-border bp-border-white/10 bp-bg-[#101014] bp-p-4 bp-text-zinc-100 bp-shadow-2xl"
+            >
               <div className="bp-mb-3 bp-flex bp-items-center bp-justify-between">
-                <span className="bp-text-[13px] bp-font-medium">扫码登录 B 站</span>
-                <button
-                  type="button"
-                  className="bili-icon-btn"
-                  aria-label="关闭登录框"
-                  onClick={() => {
-                    setLoginOpen(false);
-                    setQr(null);
-                  }}
-                >
-                  ×
+                <span className="bp-flex bp-items-center bp-gap-1.5 bp-text-[13px] bp-font-medium">
+                  <Qrcode width={15} height={15} />
+                  扫码登录 B 站
+                </span>
+                <button type="button" className="bili-icon-btn" aria-label="关闭登录框" onClick={closeLogin}>
+                  <X width={14} height={14} />
                 </button>
               </div>
 
@@ -725,9 +946,10 @@ export function Hud({ config, videoHost }: HudProps) {
               </p>
               <button
                 type="button"
-                className="bp-mt-3 bp-w-full bp-rounded-lg bp-border bp-border-white/10 bp-bg-transparent bp-py-1.5 bp-text-[12px] bp-text-zinc-300 hover:bp-bg-white/5"
+                className="bp-mt-3 bp-flex bp-w-full bp-items-center bp-justify-center bp-gap-1.5 bp-rounded-lg bp-border bp-border-white/10 bp-bg-transparent bp-py-1.5 bp-text-[12px] bp-text-zinc-300 hover:bp-bg-white/5"
                 onClick={() => void refreshQr()}
               >
+                <Refresh width={13} height={13} />
                 刷新二维码
               </button>
             </div>

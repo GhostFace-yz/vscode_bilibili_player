@@ -35,6 +35,8 @@ export interface SkinState {
   settings: SkinSettings;
   loggedIn: boolean;
   user: BiliUser | null;
+  /** 登录态版本号：登录/退出时递增，HUD 用它刷新清晰度列表 */
+  authRevision: number;
 }
 
 export interface StatePatch {
@@ -49,6 +51,13 @@ export interface QualityOption {
   desc: string;
 }
 
+export interface EpisodeInfo {
+  bvid: string;
+  cid: number;
+  page: number;
+  title: string;
+}
+
 export interface PlayInfo {
   bvid: string;
   cid: number;
@@ -61,6 +70,8 @@ export interface PlayInfo {
   qualities: QualityOption[];
   url: string;
   backupUrls: string[];
+  episodes: EpisodeInfo[];
+  episodeIndex: number;
 }
 
 export interface LoginQr {

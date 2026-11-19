@@ -4,7 +4,7 @@
 
 把 B 站视频铺在 VS Code 工作台最底层：视频在代码下面播放，编辑区、侧边栏透明/半透明，右下角悬浮控制条——写代码和看视频真正在同一个画面里，而不是挤一个侧边栏。
 
-> v0.1.1：工作台注入、720P 直连播放、扫码登录、React + Tailwind HUD 已完成，并在 macOS / VS Code 1.147 上实测通过。包管理工具为 **pnpm**。
+> v0.2.0：工作台注入、直连播放、扫码登录、React + Tailwind HUD、登录后刷新清晰度、上下集切换、shadcn Select、GSAP 动画，已在 macOS / VS Code 1.147 实测。包管理工具为 **pnpm**。
 
 ## 功能
 
@@ -12,6 +12,9 @@
 - **直连播放**：扩展宿主请求 B 站 playurl，`<video>` 直接播放 CDN 的 mp4 流，支持播放/暂停/进度/音量/倍速（浏览器原生）
 - **扫码登录**：HUD 内生成二维码，Cookie 存 VS Code `SecretStorage`；未登录也可播放 480P/720P（取决于视频）
 - **HUD 控制**：播放/暂停、进度、音量、静音、清晰度、铺满方式、透明度、模糊、暗化、换 BV、收起、隐藏
+- **登录后刷新清晰度**：扫码登录成功后自动重拉 playurl，清晰度列表与当前画质随之更新；也可点刷新按钮手动更新
+- **上下集切换**：支持多 P 视频和 B 站合集/season，HUD 显示「第 X/Y 集」、上一集/下一集和选集下拉
+- **HUD 组件**：图标来自 [xicons](https://xicons.org/)（Tabler），下拉选择使用 shadcn/ui 风格的 Radix Select，收起/展开/登录弹窗用 GSAP 动画
 - **安全模式**：不改任何安装文件的 Webview 播放器，作为兜底
 - **可还原**：自动备份、注入内容可完整移除、CSP 与 `product.json` 校验和自动恢复/修正
 - **兼容旧补丁**：检测到之前手动注入的 `#bilibili-background-video` 时，会在皮肤显示期间自动隐藏它
@@ -37,7 +40,7 @@ pnpm run compile     # 构建扩展 + 皮肤 + Tailwind 到 dist/
 pnpm run vsix
 ```
 
-生成 `vscode-bilibili-player-0.1.1.vsix`，然后在 VS Code 扩展面板右上角 `...` → **从 VSIX 安装**，重载窗口后执行 `B站皮肤: 应用皮肤`。
+生成 `vscode-bilibili-player-0.2.0.vsix`，然后在 VS Code 扩展面板右上角 `...` → **从 VSIX 安装**，重载窗口后执行 `B站皮肤: 应用皮肤`。
 
 ### 为什么 `pnpm run compile` 后“没有效果”？
 
@@ -92,6 +95,9 @@ pnpm run vsix
 
 - **TypeScript**：扩展宿主 + 注入脚本 + React HUD
 - **React 19 + Tailwind CSS 3**：HUD。Tailwind 关闭了 preflight、类名加 `bp-` 前缀、作用域限定在 `#bili-skin-hud`，避免重置 VS Code 工作台样式
+- **xicons / @ricons/tabler**：HUD 图标（播放、音量、收起、上下集、刷新等）
+- **shadcn-style Radix Select**：清晰度、铺满方式、选集下拉
+- **GSAP + @gsap/react**：HUD 收起/展开、登录弹窗、切换动效
 - **esbuild**：扩展（CJS / Node）与皮肤（IIFE / 浏览器）双产物
 - **pnpm 10**：包管理与 lockfile
 - **Node.js**：本地 HTTP API（127.0.0.1:17321–17330）、B 站 API、Cookie、文件补丁
@@ -151,7 +157,7 @@ test/hud-fixture.html     # 浏览器里预览 HUD
 
 ## 已知限制
 
-- 使用 `fnval=1 + platform=html5` 的 mp4 durl，清晰度通常封顶 720P；1080P+/4K 需要 DASH + MSE（后续路线，见 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)）
+- 使用 `fnval=1 + platform=html5` 的 mp4 durl；1080P 需要登录（B 站 `high_quality=1`），大会员 1080P+/4K 仍建议走 DASH + MSE（后续路线，见 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)）
 - CDN 播放地址有时效；加载失败时 HUD 会尝试备用地址，仍失败可点「重试」
 - 修改了 VS Code 安装目录：**VS Code 升级后需要重新应用皮肤**；`还原工作台` 可随时恢复
 - VS Code 的 `product.json` 校验和是**无 `=` 填充的 base64**，扩展已按此适配；如果你之前用其它工具改过 `workbench.js` 等文件，会看到「安装已损坏」提示，运行 `修复校验和` 即可

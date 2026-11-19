@@ -1,4 +1,4 @@
-import type { PlayInfo, VideoRef } from '../shared/types';
+import type { EpisodeInfo, PlayInfo, VideoRef } from '../shared/types';
 import type { BiliClient } from './client';
 
 /**
@@ -30,6 +30,42 @@ export async function getPlayInfo(client: BiliClient, ref: VideoRef, qn: number)
     desc: playurl.accept_description?.[index] ?? `qn ${quality}`,
   }));
 
+  const seasonEpisodes = (view.ugc_season?.sections ?? []).flatMap((section) => section.episodes ?? []);
+  let episodes: EpisodeInfo[];
+
+  if (seasonEpisodes.length > 1) {
+    episodes = seasonEpisodes.map((episode) => ({
+      bvid: episode.bvid,
+      cid: episode.cid,
+      page: episode.page?.page ?? 1,
+      title: episode.title || episode.page?.part || episode.bvid,
+    }));
+  } else if (view.pages && view.pages.length > 1) {
+    episodes = view.pages.map((page) => ({
+      bvid: view.bvid,
+      cid: page.cid,
+      page: page.page,
+      title: page.part || `P${page.page}`,
+    }));
+  } else {
+    episodes = [
+      {
+        bvid: view.bvid,
+        cid,
+        page: pageData?.page ?? pageNumber,
+        title: pageData?.part || view.title,
+      },
+    ];
+  }
+
+  let episodeIndex = episodes.findIndex((episode) => episode.cid === cid);
+  if (episodeIndex < 0) {
+    episodeIndex = episodes.findIndex((episode) => episode.bvid === view.bvid && episode.page === pageNumber);
+  }
+  if (episodeIndex < 0) {
+    episodeIndex = 0;
+  }
+
   return {
     bvid: view.bvid,
     cid,
@@ -42,5 +78,7 @@ export async function getPlayInfo(client: BiliClient, ref: VideoRef, qn: number)
     qualities,
     url: segment.url,
     backupUrls: segment.backup_url ?? [],
+    episodes,
+    episodeIndex,
   };
 }
