@@ -21,13 +21,14 @@ export function getSettings(): BilibiliPlayerSettings {
     muted: config.get<boolean>('muted', true),
     autoplay: config.get<boolean>('autoplay', true),
     quality: normalizeQuality(config.get<number>('quality', 80)),
+    hiddenMode: config.get<boolean>('hiddenMode', false),
     useIframePlayer: config.get<boolean>('useIframePlayer', false),
   };
 }
 
 export function getSkinSettings(): SkinSettings {
-  const { opacity, blur, dim, fit, muted, autoplay, quality } = getSettings();
-  return { opacity, blur, dim, fit, muted, autoplay, quality };
+  const { opacity, blur, dim, fit, muted, autoplay, quality, hiddenMode } = getSettings();
+  return { opacity, blur, dim, fit, muted, autoplay, quality, hiddenMode };
 }
 
 export async function updateSkinSettings(patch: Partial<SkinSettings>): Promise<void> {
@@ -54,6 +55,9 @@ export async function updateSkinSettings(patch: Partial<SkinSettings>): Promise<
   }
   if (typeof patch.quality === 'number' && QUALITY_OPTIONS.includes(patch.quality)) {
     updates.push(config.update('quality', patch.quality, vscode.ConfigurationTarget.Global));
+  }
+  if (typeof patch.hiddenMode === 'boolean') {
+    updates.push(config.update('hiddenMode', patch.hiddenMode, vscode.ConfigurationTarget.Global));
   }
 
   await Promise.all(updates);

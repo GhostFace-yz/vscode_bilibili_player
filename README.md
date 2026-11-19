@@ -122,6 +122,7 @@ VS Code 自带的 `libffmpeg` 没有 AAC 解码器（只有 mp3 / flac / vorbis 
 | `bilibiliPlayer.muted` | `true` | 静音播放 |
 | `bilibiliPlayer.autoplay` | `true` | 自动播放 |
 | `bilibiliPlayer.quality` | `80` | 期望清晰度（未登录通常回落到 720P/480P） |
+| `bilibiliPlayer.hiddenMode` | `false` | 隐藏播放模式：只有鼠标悬停 HUD 时才显示视频，移开暗化 100%、透明 0% |
 
 所有外观参数都能在 HUD 里实时调整，并写回设置。
 

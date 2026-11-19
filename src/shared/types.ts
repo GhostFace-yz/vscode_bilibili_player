@@ -19,6 +19,8 @@ export interface SkinSettings {
   muted: boolean;
   autoplay: boolean;
   quality: number;
+  /** 隐藏播放模式：只有鼠标悬停 HUD 时才按设置显示视频，否则暗化 100%、透明 0% */
+  hiddenMode: boolean;
 }
 
 export interface BiliUser {
@@ -107,6 +109,7 @@ export const DEFAULT_SKIN_SETTINGS: SkinSettings = {
   muted: true,
   autoplay: true,
   quality: 80,
+  hiddenMode: false,
 };
 
 export function renderSkinConfig(config: SkinConfig): string {

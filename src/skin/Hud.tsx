@@ -35,6 +35,7 @@ import type {
 import { DEFAULT_SKIN_SETTINGS } from '../shared/types';
 import { SkinApi } from './api';
 import { Button } from './components/ui/button';
+import { Switch } from './components/ui/switch';
 import {
   Select,
   SelectContent,
@@ -89,6 +90,7 @@ export function Hud({ config, videoHost }: HudProps) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [open, setOpen] = useState(true);
+  const [hudHovered, setHudHovered] = useState(false);
   const [input, setInput] = useState('');
   const [playing, setPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
@@ -341,6 +343,29 @@ export function Hud({ config, videoHost }: HudProps) {
     if (!visible) {
       videoRef.current?.pause();
       audioRef.current?.pause();
+    }
+  }, [visible]);
+
+  // 隐藏播放模式 / 胶囊展开都依赖“鼠标是否在 HUD 上”。
+  // 挂在 #bili-skin-hud 而不是 .bili-hud：Select 的 Portal 也在这个宿主里。
+  useEffect(() => {
+    const host = document.getElementById('bili-skin-hud');
+    if (!host) {
+      return;
+    }
+    const enter = () => setHudHovered(true);
+    const leave = () => setHudHovered(false);
+    host.addEventListener('pointerenter', enter);
+    host.addEventListener('pointerleave', leave);
+    return () => {
+      host.removeEventListener('pointerenter', enter);
+      host.removeEventListener('pointerleave', leave);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!visible) {
+      setHudHovered(false);
     }
   }, [visible]);
 
@@ -1371,6 +1396,9 @@ export function Hud({ config, videoHost }: HudProps) {
     }
   };
 
+  // 隐藏播放模式：只有鼠标停在 HUD 上才应用用户设置的透明度/模糊/暗化；
+  // 移开时 opacity=0、dim=1（暗化层完全盖住视频），编辑区回到正常颜色。
+  const revealVideo = !settings.hiddenMode || hudHovered;
   const layerStyle = {
     left: editorBounds ? `${editorBounds.left}px` : '0px',
     top: editorBounds ? `${editorBounds.top}px` : '0px',
@@ -1378,9 +1406,9 @@ export function Hud({ config, videoHost }: HudProps) {
     height: editorBounds ? `${editorBounds.height}px` : '0px',
     visibility: editorBounds ? 'visible' : 'hidden',
     display: visible ? undefined : 'none',
-    '--bili-opacity': settings.opacity,
-    '--bili-blur': `${settings.blur}px`,
-    '--bili-dim': settings.dim,
+    '--bili-opacity': revealVideo ? settings.opacity : 0,
+    '--bili-blur': revealVideo ? `${settings.blur}px` : '0px',
+    '--bili-dim': revealVideo ? settings.dim : 1,
     '--bili-fit': settings.fit,
   } as CSSProperties;
 
@@ -1731,6 +1759,20 @@ export function Hud({ config, videoHost }: HudProps) {
                 onChange={(value) => updateSettings({ dim: value })}
               />
 
+              <div className="bp-flex bp-items-center bp-justify-between bp-gap-3 bili-divider-t bp-pt-2.5">
+                <div className="bp-min-w-0">
+                  <div className="bp-text-[12px]">隐藏播放模式</div>
+                  <div className="bp-text-[10px] bili-muted">
+                    鼠标悬停控制条时才显示视频，移开暗化 100%
+                  </div>
+                </div>
+                <Switch
+                  checked={settings.hiddenMode}
+                  onCheckedChange={(checked) => updateSettings({ hiddenMode: checked })}
+                  aria-label="隐藏播放模式"
+                />
+              </div>
+
               <div className="bp-flex bp-gap-2">
                 <input
                   className="bili-input"
@@ -1818,19 +1860,12 @@ export function Hud({ config, videoHost }: HudProps) {
             className="bili-pill"
             ref={pillRef}
             data-inactive={open}
+            data-mini={!open && !hudHovered}
             aria-hidden={open}
             inert={open}
           >
             <div className="bili-pill-content" ref={pillContentRef}>
-              <button
-                type="button"
-                className="bili-play-btn bili-play-btn-small"
-                aria-label={playing ? '暂停' : '播放'}
-                onClick={togglePlay}
-              >
-                {playing ? <PlayerPause width={13} height={13} /> : <PlayerPlay width={13} height={13} />}
-              </button>
-              <span className="bp-max-w-[200px] bp-truncate bp-text-[12px] bili-text">
+              <span className="bp-min-w-0 bp-flex-1 bp-truncate bp-text-[12px] bili-text">
                 {info?.title ?? 'B站视频皮肤'}
               </span>
               <button
@@ -1850,6 +1885,15 @@ export function Hud({ config, videoHost }: HudProps) {
                 onClick={() => void hideSkin()}
               >
                 <X width={14} height={14} />
+              </button>
+              {/* 放在最右侧：胶囊收成 mini 时只保留这个按钮，展开时它也不会从鼠标下移走 */}
+              <button
+                type="button"
+                className="bili-play-btn bili-play-btn-small"
+                aria-label={playing ? '暂停' : '播放'}
+                onClick={togglePlay}
+              >
+                {playing ? <PlayerPause width={13} height={13} /> : <PlayerPlay width={13} height={13} />}
               </button>
             </div>
           </div>

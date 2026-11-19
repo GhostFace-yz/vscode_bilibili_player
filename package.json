@@ -2,7 +2,7 @@
   "name": "vscode-bilibili-player",
   "displayName": "Bilibili 视频皮肤",
   "description": "把 B 站视频铺在 VS Code 工作台背景层播放，边写代码边看视频。",
-  "version": "0.4.11",
+  "version": "0.4.12",
   "packageManager": "pnpm@10.32.1",
   "icon": "media/logo.png",
   "publisher": "GhostFace-yz",
@@ -117,6 +117,12 @@
           "description": "视频上方的暗化层强度。暗化色使用当前 VS Code 主题的编辑器背景色；100% 时画面完全回到原编辑区颜色。",
           "order": 4
         },
+        "bilibiliPlayer.hiddenMode": {
+          "type": "boolean",
+          "default": false,
+          "description": "隐藏播放模式：关闭时视频始终按透明度/模糊/暗化显示；开启后只有鼠标悬停 HUD 时才显示视频，移开则暗化 100%、透明 0%。",
+          "order": 5
+        },
         "bilibiliPlayer.fit": {
           "type": "string",
           "enum": [
@@ -189,6 +195,7 @@
   "devDependencies": {
     "@gsap/react": "^2.1.2",
     "@radix-ui/react-select": "^2.4.1",
+    "@radix-ui/react-switch": "^1.4.1",
     "@ricons/tabler": "^0.13.0",
     "@types/node": "^22.10.0",
     "@types/qrcode": "^1.5.6",

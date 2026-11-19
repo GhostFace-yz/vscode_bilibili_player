@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.4.12
+
+- 新增「隐藏播放模式」设置（HUD 内 shadcn Switch）：关闭时视频始终按用户设置显示；开启后只有鼠标停在 HUD 上才应用透明度/模糊/暗化，移开时 `opacity=0`、`dim=1`（暗化 100%）
+- 收起胶囊改为两种状态：悬停时是 400px 宽条（与展开面板同宽），移开后收缩成只保留播放/暂停按钮的迷你胶囊；播放键固定在最右侧，展开时不会从鼠标下移走
+- 视频透明度/模糊/暗化增加 220ms 过渡，悬停切换不突兀
+- 面板内新增 Switch 行，设置持久化到 `bilibiliPlayer.hiddenMode`
+
 ## 0.4.11
 
 - 视频层右侧收窄到代码地图（minimap）左缘：读取 `.minimap` 的实际 `getBoundingClientRect()`，取贴着编辑器右缘的最右侧 minimap，把它从 `editorBounds.width` 里扣掉，避免视频盖住代码地图

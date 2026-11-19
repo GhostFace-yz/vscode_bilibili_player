@@ -159,7 +159,11 @@
   display: flex;
   align-items: center;
   gap: 10px;
+  width: 400px;
+  max-width: calc(100vw - 36px);
+  overflow: hidden;
   padding: 8px 12px;
+  transition: width 180ms ease, padding 180ms ease;
   border: 1px solid var(--bili-border);
   border-radius: 999px;
   background: var(--bili-bg);
@@ -176,7 +180,68 @@
   display: flex;
   align-items: center;
   gap: 10px;
+  width: 100%;
   min-width: 0;
+}
+
+/* 第二种收起状态：只留一个播放/暂停按钮，尺寸固定在最右侧 */
+.bili-pill[data-mini='true'] {
+  width: 38px;
+  padding: 5px;
+  gap: 0;
+}
+
+.bili-pill[data-mini='true'] .bili-pill-content {
+  width: auto;
+  gap: 0;
+  justify-content: center;
+}
+
+.bili-pill[data-mini='true'] .bili-pill-content > :not(.bili-play-btn) {
+  display: none;
+}
+
+/* ---------- shadcn Switch ---------- */
+
+.bili-switch {
+  position: relative;
+  flex: 0 0 auto;
+  width: 34px;
+  height: 18px;
+  padding: 0;
+  border: 1px solid var(--bili-border);
+  border-radius: 999px;
+  background: var(--vscode-input-background, rgba(128, 128, 128, 0.25));
+  cursor: pointer;
+  transition: background-color 0.15s ease, border-color 0.15s ease;
+}
+
+.bili-switch[data-state='checked'] {
+  border-color: transparent;
+  background: var(--bili-button-bg);
+}
+
+.bili-switch:focus-visible {
+  outline: 1px solid var(--vscode-focusBorder, #6272a4);
+  outline-offset: 2px;
+}
+
+.bili-switch-thumb {
+  position: absolute;
+  top: 50%;
+  left: 0;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--bili-fg-muted);
+  transform: translate(3px, -50%);
+  transition: transform 0.15s ease, background-color 0.15s ease;
+  will-change: transform;
+}
+
+.bili-switch[data-state='checked'] .bili-switch-thumb {
+  background: var(--bili-button-fg);
+  transform: translate(17px, -50%);
 }
 
 /* ---------- 按钮 ---------- */
@@ -707,6 +772,7 @@
   opacity: var(--bili-opacity, 0.5);
   filter: blur(var(--bili-blur, 2px)) saturate(1.05);
   transform: scale(1.02);
+  transition: opacity 220ms ease, filter 220ms ease;
 }
 
 /*
@@ -718,6 +784,7 @@
   inset: 0;
   background: var(--vscode-editor-background, #1e1e1e);
   opacity: var(--bili-dim, 0.25);
+  transition: opacity 220ms ease;
 }
 
 /* ---------- 让工作台透出视频 ---------- */
