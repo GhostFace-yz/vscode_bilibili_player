@@ -326,7 +326,15 @@
       }
       if (path.endsWith('/api/state')) {
         if (init?.method === 'POST') {
-          return json(state);
+          try {
+            const patch = JSON.parse(init.body || '{}');
+            Object.assign(state, patch);
+            if (patch.settings) {
+              state.settings = { ...state.settings, ...patch.settings };
+            }
+          } catch {
+            // ignore
+          }
         }
         return json(state);
       }
@@ -334,7 +342,13 @@
         if (wantError) {
           return json({ error: '视频加载失败：CDN 链接可能已过期，请点击重试' }, 500);
         }
-        return json(info);
+        const qn = Number(new URL(url).searchParams.get('qn')) || info.quality;
+        return json({
+          ...info,
+          quality: qn,
+          audioUrl: qn === 64 ? undefined : info.audioUrl,
+          mode: qn === 64 ? 'native' : info.mode,
+        });
       }
       if (path.endsWith('/api/login/qr')) {
         return json({

@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.4.4
+
+- 修复音频生命周期关键 bug：切换清晰度/切回原生时，`load()` 先暂停旧音轨，但 250ms 同步循环又把它 `play()` 回来；随后 React 卸载旧 `<audio>`，它会变成 detached element 继续出声，导致“音画完全不同步 + 暂停还在响”
+- `load()` 现在立即暂停并卸载旧音轨、标记 `audioSwitching`、用请求序号防止旧响应覆盖新音轨；切换完成后才挂载/播放新音轨
+- 隐藏皮肤时不再卸载 `<video>/<audio>`，而是保持挂载、`display:none` 并暂停，避免卸载后的幽灵音频
+- 实测 DASH→原生切换后旧 audio `paused=true`，DOM 中只剩 0 个音轨，不再出现第二条音轨
+
 ## 0.4.3
 
 - 按钮/播放键/滑杆改用 VS Code 活动栏徽章配色：`activityBarBadge.background` / `activityBarBadge.foreground`（Dracula `#FF79C6` / `#F8F8F2`），滑杆增加同色已填充进度

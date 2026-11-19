@@ -2,7 +2,7 @@
 
 目标：视频不是挤在侧边栏或标签页里，而是铺在 VS Code 工作台**最底层**，代码浮在视频之上。
 
-v0.4.3 已按「工作台注入 + 直连播放」实现，并在 macOS + VS Code 1.147.0 上实测。
+v0.4.4 已按「工作台注入 + 直连播放」实现，并在 macOS + VS Code 1.147.0 上实测。
 
 ## 1. 路线选择
 
@@ -163,11 +163,22 @@ HUD 的颜色不写死，统一在 `tailwind.css` 的 `.monaco-workbench` 上定
 
 收起/展开不使用简单的 fade：面板内容先 `filter: blur()`，面板以右下角为原点从胶囊矩形 `scale` 到完整尺寸，结束后清掉模糊；收起是相反过程，切换成胶囊后再解除模糊。
 
-## 11. 视频范围与 HUD 定位
+## 11. 音频生命周期
+
+DASH 的独立音轨最容易出“双音轨”问题：`load()` 开始时先 `pause()` 旧 audio，但 250ms 同步循环会发现 video 在播放、audio 被暂停，从而再次 `play()`；等新 `audioSrc` 挂载后，旧 audio 已被 React 卸载，却可能作为 detached element 继续出声。
+
+现在的约束：
+
+- `load()` 开始立即 `pause()` + `setAudioSrc(null)`，把旧音轨卸载，并用 `audioSwitching` 阻止同步循环重新播放
+- 请求带 `loadSeq`，旧响应不会覆盖新音轨
+- 新 `audioSrc` 挂载后强制 `audio.load()`，再恢复同步
+- 隐藏皮肤时媒体元素保持挂载、`display:none` 且暂停，避免卸载产生幽灵音频
+
+## 12. 视频范围与 HUD 定位
 
 视频层不是全窗口，而是跟随 `.monaco-workbench .part.editor > .content` 的 `getBoundingClientRect()`，通过 `left/top/width/height` 固定定位；`ResizeObserver` + 每秒兜底测量处理侧边栏、终端、聊天栏、窗口缩放。HUD 宿主 `#bili-skin-hud` 的 `right/bottom` 也按编辑区计算，贴在编辑区右下角。侧边栏/面板/状态栏恢复主题不透明背景，自然遮挡视频。
 
-## 12. 注入生命周期
+## 13. 注入生命周期
 
 - **应用**：确认弹窗 → 备份 `workbench.html` / `product.json` 到 `globalStorage/workbench-backups/<version>/` → 重写 CSP → 注入 → 写 3 个资源 → 更新校验和 → 可选立即重载
 - **更新皮肤**：重复应用会先剥离旧块（幂等），换 `?v=`，重新写入
@@ -175,7 +186,7 @@ HUD 的颜色不写死，统一在 `tailwind.css` 的 `.monaco-workbench` 上定
 - **VS Code 升级后**：HTML 被覆盖，`isPatched` 返回 false；用户重新应用即可。旧资源文件残留无害，会被覆盖
 - **旧手动补丁**：检测 `#bilibili-background-video`（之前注入 workbench.js 的后台视频），显示期间 `display:none`，隐藏时恢复
 
-## 13. 安全与合规
+## 14. 安全与合规
 
 - 只在用户显式执行「应用皮肤」时修改安装目录，首次弹确认
 - 修改前备份，一键还原

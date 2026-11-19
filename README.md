@@ -4,7 +4,7 @@
 
 把 B 站视频铺在 VS Code 工作台最底层：视频只在编辑区背后播放，侧边栏/终端/状态栏保持原生遮挡，右下角悬浮控制条——写代码和看视频真正在同一个画面里，而不是挤一个侧边栏。
 
-> v0.4.3：工作台注入、直连播放、扫码登录、React + Tailwind HUD、主题自适应配色、shadcn Select/Button、GSAP morph 动画、登录后刷新清晰度、上下集切换，已在 macOS / VS Code 1.147 实测。包管理工具为 **pnpm**。
+> v0.4.4：工作台注入、直连播放、扫码登录、React + Tailwind HUD、主题自适应配色、shadcn Select/Button、GSAP morph 动画、登录后刷新清晰度、上下集切换，已在 macOS / VS Code 1.147 实测。包管理工具为 **pnpm**。
 
 ## 功能
 
@@ -44,7 +44,7 @@ pnpm run compile     # 构建扩展 + 皮肤 + Tailwind 到 dist/
 pnpm run vsix
 ```
 
-生成 `vscode-bilibili-player-0.4.3.vsix`，然后在 VS Code 扩展面板右上角 `...` → **从 VSIX 安装**，重载窗口后执行 `B站皮肤: 应用皮肤`。
+生成 `vscode-bilibili-player-0.4.4.vsix`，然后在 VS Code 扩展面板右上角 `...` → **从 VSIX 安装**，重载窗口后执行 `B站皮肤: 应用皮肤`。
 
 ### 为什么 `pnpm run compile` 后“没有效果”？
 

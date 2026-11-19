@@ -123,6 +123,9 @@ export function Hud({ config, videoHost }: HudProps) {
   }, []);
 
   const requestedKey = useRef('');
+  const loadSeq = useRef(0);
+  const audioSwitching = useRef(false);
+  const visibleRef = useRef(true);
   const backupIndex = useRef(0);
   const pendingSeek = useRef(0);
   const initialized = useRef(false);
@@ -178,24 +181,38 @@ export function Hud({ config, videoHost }: HudProps) {
 
   const load = useCallback(
     async (ref: VideoRef, qn: number): Promise<PlayInfo | null> => {
+      const seq = ++loadSeq.current;
+      // 关键生命周期：先标记切换中并暂停/卸载旧音轨。
+      // 否则加载期间 250ms 的 syncAudio 会把刚暂停的旧 audio 重新 play，
+      // 等新音轨挂载后旧 audio 已被卸载，却可能作为 detached element 继续出声。
+      audioSwitching.current = true;
+      audioRef.current?.pause();
+      setAudioSrc(null);
       setLoading(true);
       setError(null);
       setNotice(null);
-      // 切换清晰度/视频时先停掉旧的独立音轨，避免旧 audio 继续播放。
-      audioRef.current?.pause();
       try {
         const next = await api.play(ref, qn);
+        if (seq !== loadSeq.current) {
+          return null;
+        }
         setInfo(next);
         setSrcUrl(next.url);
         setAudioSrc(next.audioUrl ?? null);
         backupIndex.current = 0;
         setDuration(next.duration || 0);
+        audioSwitching.current = false;
         return next;
       } catch (loadError) {
-        setError(toMessage(loadError));
+        if (seq === loadSeq.current) {
+          audioSwitching.current = false;
+          setError(toMessage(loadError));
+        }
         return null;
       } finally {
-        setLoading(false);
+        if (seq === loadSeq.current) {
+          setLoading(false);
+        }
       }
     },
     [api],
@@ -225,6 +242,7 @@ export function Hud({ config, videoHost }: HudProps) {
   }, [videoKey, state, load]);
 
   const visible = state ? state.visible : true;
+  visibleRef.current = visible;
 
   useEffect(() => {
     document.body.classList.toggle('bili-skin-on', visible);
@@ -342,7 +360,7 @@ export function Hud({ config, videoHost }: HudProps) {
       video.addEventListener('loadedmetadata', onMetadata, { once: true });
     }
 
-    if (settingsRef.current.autoplay) {
+    if (settingsRef.current.autoplay && visibleRef.current) {
       void video.play()?.catch(() => undefined);
     }
 
@@ -399,7 +417,11 @@ export function Hud({ config, videoHost }: HudProps) {
     function sync(force = false) {
       const video = videoRef.current;
       const audio = audioRef.current;
-      if (!video || !audio || !audio.getAttribute('src')) {
+      if (!video || !audio || !audio.getAttribute('src') || audioSwitching.current) {
+        return;
+      }
+      if (!audio.isConnected) {
+        audio.pause();
         return;
       }
       applyMediaSettings();
@@ -918,6 +940,7 @@ export function Hud({ config, videoHost }: HudProps) {
     width: editorBounds ? `${editorBounds.width}px` : '0px',
     height: editorBounds ? `${editorBounds.height}px` : '0px',
     visibility: editorBounds ? 'visible' : 'hidden',
+    display: visible ? undefined : 'none',
     '--bili-opacity': settings.opacity,
     '--bili-blur': `${settings.blur}px`,
     '--bili-dim': settings.dim,
@@ -1005,14 +1028,14 @@ export function Hud({ config, videoHost }: HudProps) {
     </div>
   );
 
-  if (!visible) {
-    return null;
-  }
-
   return (
     <>
       {createPortal(videoLayer, videoHost)}
-      <div className="bili-hud" ref={hudRootRef}>
+      <div
+        className="bili-hud"
+        ref={hudRootRef}
+        style={{ display: visible ? undefined : 'none' }}
+      >
         <div className="bili-dock">
           <div
             className="bili-panel"
