@@ -245,6 +245,22 @@ export function Hud({ config, videoHost }: HudProps) {
     }
 
     let previousDisplay: string | null = null;
+    const silenceForeign = (): void => {
+      // 其它 B 站播放入口（例如旧插件的后台 video）也不允许出声。
+      document.querySelectorAll<HTMLMediaElement>('video, audio').forEach((media) => {
+        if (media.closest('#bili-skin-video-host, #bili-skin-hud')) {
+          return;
+        }
+        const src = media.currentSrc || media.getAttribute('src') || '';
+        if (!/bilivideo|bilibili|mcdn|b23\.tv/i.test(src)) {
+          return;
+        }
+        media.muted = true;
+        if (!media.paused) {
+          media.pause();
+        }
+      });
+    };
     const silenceLegacy = (): boolean => {
       const legacy = document.getElementById('bilibili-background-video');
       if (!legacy) {
@@ -265,8 +281,12 @@ export function Hud({ config, videoHost }: HudProps) {
     };
 
     silenceLegacy();
+    silenceForeign();
     // 旧插件可能在启动后几秒才注入，持续压住它的媒体；15s 后停止轮询。
-    const timer = window.setInterval(silenceLegacy, 1000);
+    const timer = window.setInterval(() => {
+      silenceLegacy();
+      silenceForeign();
+    }, 1000);
     const stop = window.setTimeout(() => window.clearInterval(timer), 15_000);
 
     return () => {
@@ -360,6 +380,19 @@ export function Hud({ config, videoHost }: HudProps) {
     audio.removeAttribute('src');
     audio.load();
   }, [audioSrc]);
+
+  // audio 的 src 变化时强制重新加载，避免复用旧元素时仍播上一段音轨。
+  useEffect(() => {
+    if (!audioSrc) {
+      return;
+    }
+    const audio = audioRef.current;
+    if (!audio) {
+      return;
+    }
+    audio.load();
+    applyMediaSettings();
+  }, [audioSrc, applyMediaSettings]);
 
   // DASH 是独立音轨：audio 必须严格跟随 video 的播放/暂停/进度。
   const syncAudio = useCallback(
@@ -957,6 +990,7 @@ export function Hud({ config, videoHost }: HudProps) {
       ) : null}
       {audioSrc ? (
         <audio
+          key={audioSrc}
           ref={audioRef}
           src={audioSrc}
           muted={muted}
@@ -1042,6 +1076,7 @@ export function Hud({ config, videoHost }: HudProps) {
                     max={Math.max(duration, 0.1)}
                     step={0.1}
                     value={Math.min(currentTime, duration || 0.1)}
+                    style={rangeFill(currentTime, 0, Math.max(duration, 0.1))}
                     aria-label="播放进度"
                     onChange={(event) => {
                       const next = Number(event.target.value);
@@ -1090,6 +1125,7 @@ export function Hud({ config, videoHost }: HudProps) {
                   max={1}
                   step={0.05}
                   value={muted ? 0 : volume}
+                  style={rangeFill(muted ? 0 : volume, 0, 1)}
                   aria-label="音量"
                   onChange={(event) => {
                     const next = Number(event.target.value);
@@ -1404,6 +1440,7 @@ function SliderRow({ label, value, min, max, step, display, onChange }: SliderRo
         max={max}
         step={step}
         value={value}
+        style={rangeFill(value, min, max)}
         onChange={(event) => onChange(Number(event.target.value))}
       />
       <span className="bp-w-[38px] bp-shrink-0 bp-text-right bp-text-[11px] bp-tabular-nums bili-subtle">
@@ -1411,6 +1448,11 @@ function SliderRow({ label, value, min, max, step, display, onChange }: SliderRo
       </span>
     </label>
   );
+}
+
+function rangeFill(value: number, min: number, max: number): CSSProperties {
+  const ratio = max > min ? Math.min(1, Math.max(0, (value - min) / (max - min))) : 0;
+  return { '--bili-range-fill': `${ratio * 100}%` } as CSSProperties;
 }
 
 function formatTime(value: number): string {

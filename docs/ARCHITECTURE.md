@@ -2,7 +2,7 @@
 
 目标：视频不是挤在侧边栏或标签页里，而是铺在 VS Code 工作台**最底层**，代码浮在视频之上。
 
-v0.4.2 已按「工作台注入 + 直连播放」实现，并在 macOS + VS Code 1.147.0 上实测。
+v0.4.3 已按「工作台注入 + 直连播放」实现，并在 macOS + VS Code 1.147.0 上实测。
 
 ## 1. 路线选择
 
@@ -154,7 +154,7 @@ HUD 的颜色不写死，统一在 `tailwind.css` 的 `.monaco-workbench` 上定
 | 文字 | `foreground` / `descriptionForeground` / `disabledForeground` |
 | 面板背景 | `editorWidget-background`（94% 不透明 + backdrop blur） |
 | 边框 | `input-border` / `dropdown-border`（回退 `panel-border`）；避开 Dracula 过亮的 `panel.border` |
-| 按钮/滑杆 | 主色用 `focusBorder`；文字 `button-foreground`；次要按钮 `button-secondary*`；hover 回退到 `button-hoverBackground` 或 color-mix |
+| 按钮/滑杆 | 主色用 `activityBarBadge-background`；文字 `activityBarBadge-foreground`；回退 `badge-*` / `focusBorder`；次要按钮 `button-secondary*` |
 | 输入/下拉 | `input-background` / `input-foreground` / `input-border` / `dropdown-*` |
 | 焦点/选中 | `focusBorder` / `list-activeSelection*` / `list-highlightForeground` |
 | 错误/警告 | `inputValidation-error*` / `inputValidation-warning*` / `errorForeground` |

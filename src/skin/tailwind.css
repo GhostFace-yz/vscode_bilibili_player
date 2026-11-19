@@ -26,13 +26,16 @@
   --bili-selected-fg: var(--vscode-list-activeSelectionForeground, var(--bili-fg));
   --bili-accent: var(--vscode-focusBorder, var(--vscode-button-background, #007acc));
   --bili-link: var(--vscode-textLink-foreground, var(--bili-accent));
-  /* 按钮/滑杆用主题的 focusBorder（Dracula 下是 #6272A4）作为鲜艳强调色。 */
-  --bili-button-bg: var(--vscode-focusBorder, var(--vscode-button-background, #0e639c));
-  --bili-button-fg: var(--vscode-button-foreground, #ffffff);
-  --bili-button-hover: var(
-    --vscode-button-hoverBackground,
-    color-mix(in srgb, var(--bili-button-bg) 86%, white)
+  /* 按钮/播放键/滑杆取 VS Code 活动栏徽章的配色（Dracula：#FF79C6 / #F8F8F2）。 */
+  --bili-button-bg: var(
+    --vscode-activityBarBadge-background,
+    var(--vscode-badge-background, var(--vscode-focusBorder, #0e639c))
   );
+  --bili-button-fg: var(
+    --vscode-activityBarBadge-foreground,
+    var(--vscode-badge-foreground, var(--vscode-button-foreground, #ffffff))
+  );
+  --bili-button-hover: color-mix(in srgb, var(--bili-button-bg) 86%, white);
   --bili-button-2-bg: var(--vscode-button-secondaryBackground, rgba(128, 128, 128, 0.18));
   --bili-button-2-fg: var(--vscode-button-secondaryForeground, var(--bili-fg));
   --bili-button-2-hover: var(--vscode-button-secondaryHoverBackground, var(--bili-hover));
@@ -649,7 +652,13 @@
   height: 4px;
   margin: 0;
   border-radius: 999px;
-  background: var(--bili-border);
+  background: linear-gradient(
+    to right,
+    var(--bili-button-bg) 0%,
+    var(--bili-button-bg) var(--bili-range-fill, 0%),
+    var(--bili-border) var(--bili-range-fill, 0%),
+    var(--bili-border) 100%
+  );
   outline: none;
   appearance: none;
   -webkit-appearance: none;

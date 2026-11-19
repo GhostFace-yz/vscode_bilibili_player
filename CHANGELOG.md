@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.4.3
+
+- 按钮/播放键/滑杆改用 VS Code 活动栏徽章配色：`activityBarBadge.background` / `activityBarBadge.foreground`（Dracula `#FF79C6` / `#F8F8F2`），滑杆增加同色已填充进度
+- 音频元素按 `audioSrc` 重新挂载并强制 `load()`，避免切换清晰度/选集后复用旧 `<audio>` 导致播放上一段音轨
+- 持续扫描并暂停/静音其它 B 站 DOM 媒体（旧 bilibilihelper 后台视频等），避免出现第二条音轨
+
 ## 0.4.2
 
 - 音画同步：独立音轨每 250ms 校准一次，漂移 >120ms 立即 seek；暂停/拖动/缓冲时同时暂停 audio，修复“暂停了声音还在放”
