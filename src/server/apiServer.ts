@@ -13,6 +13,15 @@ import type {
 export const API_VERSION = 2;
 
 let lastDiagnostics: { at: number; payload: unknown } | null = null;
+const diagnosticsHistory: { at: number; payload: unknown }[] = [];
+const DIAGNOSTICS_HISTORY_LIMIT = 600;
+
+export interface ClientLogEntry {
+  level?: 'info' | 'warn' | 'error';
+  message?: string;
+  data?: unknown;
+  at?: number;
+}
 
 export interface ApiServerDeps {
   token: string;
@@ -24,6 +33,7 @@ export interface ApiServerDeps {
   logout(): Promise<void>;
   version: string;
   log?(message: string): void;
+  clientLog?(entry: ClientLogEntry): void;
 }
 
 export interface ApiServerHandle {
@@ -126,14 +136,41 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
     return;
   }
 
+  if (path === '/api/test-tone.wav' && req.method === 'GET') {
+    const wav = getTestToneWav();
+    res.writeHead(200, {
+      'Content-Type': 'audio/wav',
+      'Content-Length': wav.length,
+      'Cache-Control': 'no-store',
+    });
+    res.end(wav);
+    return;
+  }
+
+  if (path === '/api/client-log' && req.method === 'POST') {
+    const entry = await readJson<ClientLogEntry>(req);
+    deps.clientLog?.(entry);
+    sendJson(res, 200, { ok: true });
+    return;
+  }
+
   if (path === '/api/diagnostics' && req.method === 'POST') {
     const payload = await readJson<unknown>(req);
-    lastDiagnostics = { at: Date.now(), payload };
+    const sample = { at: Date.now(), payload };
+    lastDiagnostics = sample;
+    diagnosticsHistory.push(sample);
+    if (diagnosticsHistory.length > DIAGNOSTICS_HISTORY_LIMIT) {
+      diagnosticsHistory.shift();
+    }
     sendJson(res, 200, { ok: true });
     return;
   }
 
   if (path === '/api/diagnostics' && req.method === 'GET') {
+    if (url.searchParams.get('history') !== null) {
+      sendJson(res, 200, { latest: lastDiagnostics, history: diagnosticsHistory });
+      return;
+    }
     sendJson(res, 200, lastDiagnostics ?? { ok: true, empty: true });
     return;
   }
@@ -238,6 +275,43 @@ async function proxyAudio(req: http.IncomingMessage, res: http.ServerResponse, u
   const body = Readable.fromWeb(upstream.body as unknown as import('node:stream/web').ReadableStream);
   req.on('close', () => body.destroy());
   body.pipe(res);
+}
+
+let cachedTone: Buffer | null = null;
+
+/**
+ * 1 秒 440Hz 正弦波，用来验证 workbench 里的 <audio> 能否出声。
+ * 走 http://127.0.0.1 而不是 data:，避免被 CSP 的 media-src 拦掉。
+ */
+function getTestToneWav(): Buffer {
+  if (cachedTone) {
+    return cachedTone;
+  }
+  const sampleRate = 44100;
+  const seconds = 1.2;
+  const samples = Math.floor(sampleRate * seconds);
+  const data = Buffer.alloc(samples * 2);
+  for (let i = 0; i < samples; i += 1) {
+    const fade = Math.min(1, i / (sampleRate * 0.02), (samples - i) / (sampleRate * 0.05));
+    const value = Math.sin((2 * Math.PI * 440 * i) / sampleRate) * 0.35 * fade;
+    data.writeInt16LE(Math.round(value * 32767), i * 2);
+  }
+  const header = Buffer.alloc(44);
+  header.write('RIFF', 0);
+  header.writeUInt32LE(36 + data.length, 4);
+  header.write('WAVE', 8);
+  header.write('fmt ', 12);
+  header.writeUInt32LE(16, 16);
+  header.writeUInt16LE(1, 20);
+  header.writeUInt16LE(1, 22);
+  header.writeUInt32LE(sampleRate, 24);
+  header.writeUInt32LE(sampleRate * 2, 28);
+  header.writeUInt16LE(2, 32);
+  header.writeUInt16LE(16, 34);
+  header.write('data', 36);
+  header.writeUInt32LE(data.length, 40);
+  cachedTone = Buffer.concat([header, data]);
+  return cachedTone;
 }
 
 function setCorsHeaders(res: http.ServerResponse): void {

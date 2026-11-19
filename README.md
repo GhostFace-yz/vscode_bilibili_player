@@ -80,6 +80,26 @@ pnpm run vsix
 
 播放快捷键：`Cmd/Ctrl+Alt+Shift+B`。
 
+## 排查：有画面没声音
+
+0.4.8 起见下面的顺序排查，不用再靠猜：
+
+1. HUD 底部点 **「测试声音」**。它用 Web Audio `AudioContext` 直接生成 440Hz 蜂鸣，不经过 CSP、不经过网络：
+   - 能听到：workbench 的音频输出正常，问题在具体媒体资源
+   - 听不到：VS Code 主窗口本身没有音频输出（系统音量、输出设备、或窗口被静音），任何 `<video>` 组件都救不了
+2. 点「显示日志」打开输出通道，或直接看渲染进程日志：
+   - macOS：`~/Library/Application Support/Code/User/globalStorage/ghostface-yz.vscode-bilibili-player/client.log`
+   - Windows：`%APPDATA%\Code\User\globalStorage\ghostface-yz.vscode-bilibili-player\client.log`
+   - Linux：`~/.config/Code/User/globalStorage/ghostface-yz.vscode-bilibili-player/client.log`
+   里面按时间记录 `video loadstart/loadedmetadata/canplay/playing/error`、`audio fetch start/blob ready/element error`、`embedded audio check`（`webkitAudioDecodedByteCount`）和未捕获异常。
+3. 想看时间线可以带令牌访问诊断接口：
+   ```bash
+   curl "http://127.0.0.1:17321/api/diagnostics?history=1&token=<令牌>"
+   ```
+   令牌在 workbench 目录的 `bilibili-skin.config.js` 里。
+
+音轨为什么要先 `fetch` 成 Blob：workbench 里 `<audio src="http://127.0.0.1:...">` 会被静默拦截（`error 4`，`message` 为空），而同一个 URL 用 CORS `fetch` 是通的。0.4.8 因此把音轨字节抓下来，再用 `blob:` URL 交给 `<audio>`；720P 原生 mp4 则直接使用内嵌 AAC，播放 4 秒后若解码字节数仍为 0 会自动切到独立音轨。
+
 ## 设置
 
 | 设置 | 默认 | 说明 |

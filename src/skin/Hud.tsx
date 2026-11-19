@@ -34,7 +34,6 @@ import type {
 } from '../shared/types';
 import { DEFAULT_SKIN_SETTINGS } from '../shared/types';
 import { SkinApi } from './api';
-import { TEST_TONE } from './testTone';
 import { Button } from './components/ui/button';
 import {
   Select,
@@ -145,7 +144,6 @@ export function Hud({ config, videoHost }: HudProps) {
   const requestedKey = useRef('');
   const loadSeq = useRef(0);
   const audioSwitching = useRef(false);
-  const audioBackupIndex = useRef(0);
   const audioFallbackRef = useRef(false);
   const visibleRef = useRef(true);
   const mediaErrorRef = useRef<string | null>(null);
@@ -155,6 +153,25 @@ export function Hud({ config, videoHost }: HudProps) {
   const lastAuthRevision = useRef<number | null>(null);
   const saveTimer = useRef<number | undefined>(undefined);
   const pendingSave = useRef<Partial<SkinSettings>>({});
+  const infoRef = useRef<PlayInfo | null>(info);
+  infoRef.current = info;
+  // 独立音轨走 fetch -> Blob -> <audio src=blob:>。
+  // workbench 里 <audio src=http://127.0.0.1> 会被静默拦截（error 4、message 为空），
+  // 但同样的请求用 CORS fetch 可以成功，所以先把字节抓下来再交给媒体元素。
+  const audioCandidates = useRef<string[]>([]);
+  const audioCursor = useRef(0);
+  const audioBlobUrl = useRef<string | null>(null);
+  const audioAbort = useRef<AbortController | null>(null);
+  const audioBusy = useRef(false);
+  const audioStartRef = useRef<((seq: number, reason: string) => void) | null>(null);
+  const loadRef = useRef<((ref: VideoRef, qn: number) => Promise<PlayInfo | null>) | null>(null);
+  const testContextRef = useRef<AudioContext | null>(null);
+  const logClient = useCallback(
+    (level: 'info' | 'warn' | 'error', message: string, data?: unknown) => {
+      api.log({ level, message, data });
+    },
+    [api],
+  );
 
   const refreshState = useCallback(async () => {
     try {
@@ -202,6 +219,105 @@ export function Hud({ config, videoHost }: HudProps) {
     setInput(video ? (video.bvid ?? `av${video.aid ?? ''}`) : '');
   }, [state]);
 
+  const releaseAudioBlob = useCallback(() => {
+    if (audioBlobUrl.current) {
+      URL.revokeObjectURL(audioBlobUrl.current);
+      audioBlobUrl.current = null;
+    }
+  }, []);
+
+  const audioExhausted = useCallback(
+    (reason: string) => {
+      const current = infoRef.current;
+      logClient('warn', 'all audio candidates failed', {
+        reason,
+        mode: current?.mode,
+        quality: current?.quality,
+      });
+      if (current?.mode === 'native') {
+        setAudioSrc(null);
+        setNotice('独立音轨不可用，已使用视频内音轨');
+        return;
+      }
+      if (current && current.quality > 64 && !audioFallbackRef.current) {
+        audioFallbackRef.current = true;
+        setNotice('独立音轨加载失败，已切换到 720P（内嵌音轨）');
+        void loadRef.current?.({ bvid: current.bvid, page: current.page }, 64);
+        return;
+      }
+      setError(`音轨加载失败（${reason}）`);
+    },
+    [logClient],
+  );
+
+  // 音轨先 fetch 成 Blob，再交给 <audio src="blob:...">。
+  // 直接让 <audio> 请求 http://127.0.0.1 在 workbench 里会 error 4（message 为空），
+  // 而同一个 URL 用 CORS fetch 是通的，所以绕开媒体元素自己的网络栈。
+  const startAudio = useCallback(
+    (seq: number, reason: string) => {
+      if (seq !== loadSeq.current || audioBusy.current) {
+        return;
+      }
+      const url = audioCandidates.current[audioCursor.current];
+      if (!url) {
+        audioExhausted(reason);
+        return;
+      }
+      audioCursor.current += 1;
+      audioBusy.current = true;
+      audioAbort.current?.abort();
+      const controller = new AbortController();
+      audioAbort.current = controller;
+      const startedAt = Date.now();
+      logClient('info', 'audio fetch start', { reason, seq, url: url.slice(0, 180) });
+
+      void (async () => {
+        try {
+          const response = await fetch(url, { signal: controller.signal, cache: 'no-store' });
+          if (!response.ok) {
+            throw new Error(`HTTP ${response.status}`);
+          }
+          const type = response.headers.get('content-type') ?? 'audio/mp4';
+          const buffer = await response.arrayBuffer();
+          if (seq !== loadSeq.current) {
+            return;
+          }
+          const blobUrl = URL.createObjectURL(new Blob([buffer], { type }));
+          if (audioBlobUrl.current) {
+            URL.revokeObjectURL(audioBlobUrl.current);
+          }
+          audioBlobUrl.current = blobUrl;
+          audioBusy.current = false;
+          audioSwitching.current = false;
+          setAudioSrc(blobUrl);
+          setNotice(null);
+          logClient('info', 'audio blob ready', {
+            bytes: buffer.byteLength,
+            ms: Date.now() - startedAt,
+            type,
+          });
+        } catch (error) {
+          if (seq !== loadSeq.current) {
+            return;
+          }
+          const name = error instanceof DOMException ? error.name : '';
+          logClient('error', 'audio fetch failed', {
+            name,
+            message: toMessage(error),
+            url: url.slice(0, 180),
+          });
+          if (name === 'AbortError') {
+            return;
+          }
+          audioBusy.current = false;
+          audioStartRef.current?.(seq, 'backup');
+        }
+      })();
+    },
+    [audioExhausted, logClient],
+  );
+  audioStartRef.current = startAudio;
+
   const load = useCallback(
     async (ref: VideoRef, qn: number): Promise<PlayInfo | null> => {
       const seq = ++loadSeq.current;
@@ -209,10 +325,15 @@ export function Hud({ config, videoHost }: HudProps) {
       // 否则加载期间 250ms 的 syncAudio 会把刚暂停的旧 audio 重新 play，
       // 等新音轨挂载后旧 audio 已被卸载，却可能作为 detached element 继续出声。
       audioSwitching.current = true;
-      audioBackupIndex.current = 0;
       audioFallbackRef.current = false;
+      audioAbort.current?.abort();
+      audioBusy.current = false;
+      audioCandidates.current = [];
+      audioCursor.current = 0;
       audioRef.current?.pause();
       setAudioSrc(null);
+      releaseAudioBlob();
+      mediaErrorRef.current = null;
       setLoading(true);
       setError(null);
       setNotice(null);
@@ -223,10 +344,17 @@ export function Hud({ config, videoHost }: HudProps) {
         }
         setInfo(next);
         setSrcUrl(next.url);
-        setAudioSrc(next.audioUrl ?? null);
         backupIndex.current = 0;
         setDuration(next.duration || 0);
-        audioSwitching.current = false;
+        audioCandidates.current = [next.audioUrl, ...(next.audioBackupUrls ?? [])].filter(
+          (url): url is string => Boolean(url),
+        );
+        if (next.mode === 'dash' && audioCandidates.current.length) {
+          setNotice('正在准备音轨…');
+          startAudio(seq, 'dash');
+        } else {
+          audioSwitching.current = false;
+        }
         return next;
       } catch (loadError) {
         if (seq === loadSeq.current) {
@@ -240,39 +368,25 @@ export function Hud({ config, videoHost }: HudProps) {
         }
       }
     },
-    [api],
+    [api, releaseAudioBlob, startAudio],
   );
+  loadRef.current = load;
 
   const handleAudioError = useCallback(() => {
     const audio = audioRef.current;
+    logClient('error', 'audio element error', {
+      code: audio?.error?.code ?? null,
+      message: audio?.error?.message ?? '',
+      src: (audio?.currentSrc || audio?.getAttribute('src') || '').slice(0, 180),
+      readyState: audio?.readyState,
+      networkState: audio?.networkState,
+    });
     if (audio?.error) {
       mediaErrorRef.current = `audio error ${audio.error.code}: ${audio.error.message}`;
     }
-    if (!info) {
-      return;
-    }
-    const backup = info.audioBackupUrls?.[audioBackupIndex.current];
-    if (backup) {
-      audioBackupIndex.current += 1;
-      setAudioSrc(backup);
-      return;
-    }
-    // 原生模式下外置音轨失败：退回视频内嵌音轨。
-    if (info.mode === 'native' && info.audioUrl) {
-      setAudioSrc(null);
-      setNotice('独立音轨加载失败，已切回视频内音轨');
-      return;
-    }
-    // DASH 音轨 CDN 失败时自动回退 720P 原生 mp4（音轨在 video 里），保证有声音。
-    if (info.quality > 64 && !audioFallbackRef.current) {
-      audioFallbackRef.current = true;
-      setNotice('DASH 音轨加载失败，已切换到 720P 保证有声音');
-      void load({ bvid: info.bvid, page: info.page }, 64);
-      return;
-    }
-    setAudioBlocked(false);
-    setError('音轨加载失败，请尝试 720P 或点重试');
-  }, [info, load]);
+    audioBusy.current = false;
+    audioStartRef.current?.(loadSeq.current, 'element error');
+  }, [logClient]);
 
   const refreshPlayInfo = useCallback(() => {
     const ref = stateRef.current?.video;
@@ -624,6 +738,149 @@ export function Hud({ config, videoHost }: HudProps) {
     }, 250);
     return () => window.clearInterval(timer);
   }, [audioSrc, syncAudio]);
+
+  useEffect(() => {
+    return () => {
+      audioAbort.current?.abort();
+      if (audioBlobUrl.current) {
+        URL.revokeObjectURL(audioBlobUrl.current);
+        audioBlobUrl.current = null;
+      }
+      void testContextRef.current?.close().catch(() => undefined);
+      testContextRef.current = null;
+    };
+  }, []);
+
+  // 把渲染进程里的未捕获错误也写进日志，方便排查“点了没反应/报错未找到”。
+  useEffect(() => {
+    const onError = (event: ErrorEvent) => {
+      logClient('error', 'window error', {
+        message: event.message,
+        filename: event.filename,
+        line: event.lineno,
+        column: event.colno,
+        stack: event.error instanceof Error ? event.error.stack?.slice(0, 1200) : undefined,
+      });
+    };
+    const onRejection = (event: PromiseRejectionEvent) => {
+      const reason = event.reason;
+      logClient('error', 'unhandled rejection', {
+        reason:
+          reason instanceof Error
+            ? `${reason.name}: ${reason.message}`
+            : typeof reason === 'string'
+              ? reason
+              : safeJson(reason),
+        stack: reason instanceof Error ? reason.stack?.slice(0, 1200) : undefined,
+      });
+    };
+    window.addEventListener('error', onError);
+    window.addEventListener('unhandledrejection', onRejection);
+    return () => {
+      window.removeEventListener('error', onError);
+      window.removeEventListener('unhandledrejection', onRejection);
+    };
+  }, [logClient]);
+
+  const describeMedia = (media: HTMLMediaElement) => ({
+    src: (media.currentSrc || media.getAttribute('src') || '').slice(0, 180),
+    readyState: media.readyState,
+    networkState: media.networkState,
+    paused: media.paused,
+    muted: media.muted,
+    volume: media.volume,
+    error: media.error ? { code: media.error.code, message: media.error.message } : null,
+    audioBytes: (media as HTMLMediaElement & { webkitAudioDecodedByteCount?: number })
+      .webkitAudioDecodedByteCount,
+  });
+
+  // 关键媒体事件全部落盘，出问题时能直接看到加载/解码在哪一步断掉。
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video) {
+      return;
+    }
+    const events = [
+      'loadstart',
+      'loadedmetadata',
+      'loadeddata',
+      'canplay',
+      'canplaythrough',
+      'playing',
+      'pause',
+      'waiting',
+      'stalled',
+      'suspend',
+      'error',
+      'emptied',
+    ];
+    const handler = (event: Event) => {
+      const media = event.currentTarget as HTMLMediaElement;
+      logClient(event.type === 'error' ? 'error' : 'info', `video ${event.type}`, describeMedia(media));
+    };
+    for (const name of events) {
+      video.addEventListener(name, handler);
+    }
+    return () => {
+      for (const name of events) {
+        video.removeEventListener(name, handler);
+      }
+    };
+  }, [srcUrl, logClient]);
+
+  useEffect(() => {
+    const audio = audioRef.current;
+    if (!audio) {
+      return;
+    }
+    const events = ['loadstart', 'loadedmetadata', 'canplay', 'playing', 'pause', 'error', 'stalled', 'emptied'];
+    const handler = (event: Event) => {
+      const media = event.currentTarget as HTMLMediaElement;
+      logClient(event.type === 'error' ? 'error' : 'info', `audio ${event.type}`, describeMedia(media));
+    };
+    for (const name of events) {
+      audio.addEventListener(name, handler);
+    }
+    return () => {
+      for (const name of events) {
+        audio.removeEventListener(name, handler);
+      }
+    };
+  }, [audioSrc, logClient]);
+
+  // 720P 原生 mp4 内嵌音轨：如果播放 4 秒后解码字节数还是 0，说明这条内嵌音轨没被解码，
+  // 自动改用独立音轨（fetch 成 Blob 播放）。
+  useEffect(() => {
+    if (!playing || muted || audioSrc || !info?.audioUrl) {
+      return;
+    }
+    const timer = window.setTimeout(() => {
+      const video = videoRef.current;
+      if (!video || video.paused || video.muted) {
+        return;
+      }
+      const bytes = (video as HTMLVideoElement & { webkitAudioDecodedByteCount?: number })
+        .webkitAudioDecodedByteCount;
+      logClient('info', 'embedded audio check', {
+        bytes,
+        mode: info.mode,
+        quality: info.quality,
+        paused: video.paused,
+        muted: video.muted,
+      });
+      if (typeof bytes !== 'number' || bytes > 0) {
+        return;
+      }
+      logClient('warn', 'embedded audio not decoded, switching to external track');
+      setNotice('视频内音轨没有解码，正在改用独立音轨');
+      audioCandidates.current = [info.audioUrl, ...(info.audioBackupUrls ?? [])].filter(
+        (url): url is string => Boolean(url),
+      );
+      audioCursor.current = 0;
+      audioStartRef.current?.(loadSeq.current, 'embedded silent');
+    }, 4000);
+    return () => window.clearTimeout(timer);
+  }, [playing, muted, audioSrc, info, logClient]);
 
   // HUD 也要贴住编辑区右下角（真正定位的是 main.tsx 创建的 #bili-skin-hud 宿主）
   useEffect(() => {
@@ -1003,12 +1260,72 @@ export function Hud({ config, videoHost }: HudProps) {
   };
 
   const playTestTone = () => {
-    const tone = new Audio(TEST_TONE);
-    tone.volume = volumeRef.current;
-    void tone
+    // 1) Web Audio：不经过 CSP/网络，直接验证 workbench 有没有音频输出。
+    try {
+      const Ctor =
+        window.AudioContext ??
+        (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+      if (!Ctor) {
+        throw new Error('AudioContext 不可用');
+      }
+      const context = testContextRef.current ?? new Ctor();
+      testContextRef.current = context;
+      const oscillator = context.createOscillator();
+      const gain = context.createGain();
+      oscillator.type = 'sine';
+      oscillator.frequency.value = 440;
+      gain.gain.value = Math.max(0.05, Math.min(0.5, volumeRef.current));
+      oscillator.connect(gain);
+      gain.connect(context.destination);
+      const startAt = context.currentTime + 0.02;
+      oscillator.start(startAt);
+      oscillator.stop(startAt + 1);
+      oscillator.onended = () => {
+        oscillator.disconnect();
+        gain.disconnect();
+      };
+      void context
+        .resume()
+        .then(() => {
+          logClient('info', 'test tone (web audio)', {
+            state: context.state,
+            sampleRate: context.sampleRate,
+            volume: volumeRef.current,
+          });
+          setNotice(`测试音已播放（Web Audio：${context.state}）`);
+        })
+        .catch((error: unknown) => {
+          logClient('error', 'test tone web audio failed', {
+            message: toMessage(error),
+            state: context.state,
+          });
+          setError(`测试音失败：${toMessage(error)}`);
+        });
+    } catch (error) {
+      logClient('error', 'test tone setup failed', { message: toMessage(error) });
+      setError(`测试音失败：${toMessage(error)}`);
+    }
+
+    // 2) 再用 <audio> 拉本地 WAV（音量极低），只为验证 workbench 的媒体网络/解码链路。
+    const probe = new Audio(api.testToneUrl());
+    probe.volume = 0.001;
+    probe
       .play()
-      .then(() => setNotice('测试声音已播放：能听到说明 workbench 媒体输出正常'))
-      .catch((error) => setError(`测试声音播放失败：${toMessage(error)}`));
+      .then(() => {
+        logClient('info', 'test tone (audio element over http)', {
+          readyState: probe.readyState,
+          duration: probe.duration,
+          audioBytes: (probe as HTMLAudioElement & { webkitAudioDecodedByteCount?: number })
+            .webkitAudioDecodedByteCount,
+        });
+        probe.pause();
+      })
+      .catch((error: unknown) => {
+        logClient('error', 'test tone audio element failed', {
+          name: error instanceof DOMException ? error.name : undefined,
+          message: toMessage(error),
+        });
+      });
   };
 
   const hideSkin = async () => {
@@ -1692,4 +2009,12 @@ function formatTime(value: number): string {
 
 function toMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+function safeJson(value: unknown): string {
+  try {
+    return JSON.stringify(value)?.slice(0, 1200) ?? String(value);
+  } catch {
+    return String(value);
+  }
 }

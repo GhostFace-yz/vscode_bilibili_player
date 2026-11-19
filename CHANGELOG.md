@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.4.8
+
+- 独立音轨改为 `fetch -> Blob -> <audio src="blob:...">`：workbench 里 `<audio>` 直接请求 `http://127.0.0.1` 会被静默拦截（`error 4` 且 message 为空），而同一 URL 用 CORS `fetch` 正常，因此先把音轨字节抓下来再播放，并保留多个 CDN 备选源
+- 原生 720P 不再挂独立音轨，直接使用 mp4 内嵌 AAC；播放 4 秒后若 `webkitAudioDecodedByteCount` 仍为 0，自动切换到独立音轨
+- 「测试声音」改用 Web Audio `AudioContext` 振荡器（不经过 CSP/media-src，也不依赖网络），同时用 `<audio>` 拉本地 `/api/test-tone.wav` 验证媒体链路
+- 新增渲染进程日志：媒体事件、未捕获异常、`play()/fetch` 失败都会 POST 到 `/api/client-log`，写入扩展 globalStorage 的 `client.log` 并输出到「Bilibili 皮肤」输出通道
+- `/api/diagnostics` 增加最近 600 条历史（`?history=1`），方便回看播放/暂停/切源时间线
+- CSP `media-src` 增加 `data:`（Web Audio 不需要，但保留给后续音频测试）
+
 ## 0.4.7
 
 - 音轨改走本地代理 `/api/audio`：扩展宿主补 Referer/UA、把 `application/octet-stream` 规范成 `audio/mp4`、转发 Range；解决 VS Code 里 `<audio>` 直接请求 B 站 m4s 的 `MEDIA_ERR_SRC_NOT_SUPPORTED`

@@ -87,6 +87,12 @@ async function initServices(context: vscode.ExtensionContext): Promise<Services>
   const token = await getOrCreateToken(context);
   const state = new ExtensionState(context, auth);
   const version = String(context.extension.packageJSON.version ?? '0.0.0');
+  const clientLogPath = path.join(context.globalStorageUri.fsPath, 'client.log');
+  try {
+    fs.mkdirSync(path.dirname(clientLogPath), { recursive: true });
+  } catch {
+    // 目录已存在或不可写，下面 append 失败会静默忽略
+  }
 
   let apiPort = 0;
   const server = await startApiServer({
@@ -111,10 +117,27 @@ async function initServices(context: vscode.ExtensionContext): Promise<Services>
     loginPoll: (key) => auth.pollQr(key),
     logout: () => auth.logout(),
     log,
+    clientLog: (entry) => {
+      const payload = {
+        ...entry,
+        at: new Date(entry.at ?? Date.now()).toISOString(),
+      };
+      try {
+        fs.appendFileSync(clientLogPath, `${JSON.stringify(payload)}\n`);
+      } catch {
+        // 磁盘不可写时只保留输出通道
+      }
+      log(
+        `[client:${entry.level ?? 'info'}] ${entry.message ?? ''}${
+          entry.data === undefined ? '' : ` ${stringifyForLog(entry.data)}`
+        }`,
+      );
+    },
   });
 
   apiPort = server.port;
   log(`本地 API 已启动：http://127.0.0.1:${server.port}`);
+  log(`客户端日志：${clientLogPath}`);
 
   const started: Services = { auth, state, server, token };
   await syncSkinConfig(context, started);
@@ -495,4 +518,12 @@ function reportError(error: unknown): void {
 
 function toMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+function stringifyForLog(value: unknown): string {
+  try {
+    return JSON.stringify(value)?.slice(0, 2000) ?? String(value);
+  } catch {
+    return String(value);
+  }
 }

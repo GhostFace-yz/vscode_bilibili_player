@@ -60,6 +60,29 @@ export class SkinApi {
     });
   }
 
+  /** 把渲染进程里的错误/媒体事件送到扩展宿主，落盘成日志。 */
+  log(entry: { level?: 'info' | 'warn' | 'error'; message?: string; data?: unknown }): void {
+    try {
+      void fetch(`http://127.0.0.1:${this.preferredPort}/api/client-log`, {
+        method: 'POST',
+        cache: 'no-store',
+        headers: {
+          'content-type': 'application/json',
+          'x-bili-token': this.config.token,
+        },
+        body: JSON.stringify({ ...entry, at: Date.now() }),
+      }).catch(() => undefined);
+    } catch {
+      // 日志失败不能影响播放
+    }
+  }
+
+  testToneUrl(): string {
+    return `http://127.0.0.1:${this.preferredPort}/api/test-tone.wav?token=${encodeURIComponent(
+      this.config.token,
+    )}`;
+  }
+
   loginQr(): Promise<LoginQr> {
     return this.request<LoginQr>('/api/login/qr');
   }
