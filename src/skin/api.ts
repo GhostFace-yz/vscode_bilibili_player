@@ -19,6 +19,7 @@ interface ApiError extends Error {
  */
 export class SkinApi {
   private preferredPort: number;
+  private readonly verifiedPorts = new Set<number>();
 
   constructor(private readonly config: SkinConfig) {
     this.preferredPort = config.port;
@@ -68,6 +69,9 @@ export class SkinApi {
     let lastError: unknown;
 
     for (const port of ports) {
+      if (!(await this.isCompatible(port))) {
+        continue;
+      }
       try {
         const data = await this.fetchJson<T>(port, path, init);
         this.preferredPort = port;
@@ -75,7 +79,11 @@ export class SkinApi {
       } catch (error) {
         lastError = error;
         const status = (error as ApiError).status;
-        if (status !== undefined && status !== 401 && status !== 404) {
+        if (status === 401 || status === 404) {
+          this.verifiedPorts.delete(port);
+          continue;
+        }
+        if (status !== undefined) {
           throw error;
         }
       }
@@ -84,6 +92,27 @@ export class SkinApi {
     throw new Error(
       lastError instanceof Error ? `本地服务未响应：${lastError.message}` : '本地服务未启动',
     );
+  }
+
+  /** 只连接 0.2+ 的本地 API，避免多窗口升级期间连到旧版服务。 */
+  private async isCompatible(port: number): Promise<boolean> {
+    if (this.verifiedPorts.has(port)) {
+      return true;
+    }
+    try {
+      const response = await fetch(`http://127.0.0.1:${port}/api/health`, { cache: 'no-store' });
+      if (!response.ok) {
+        return false;
+      }
+      const data = (await response.json()) as { ok?: boolean; apiVersion?: number };
+      if (data.ok === true && (data.apiVersion ?? 0) >= 2) {
+        this.verifiedPorts.add(port);
+        return true;
+      }
+    } catch {
+      // 端口不可用
+    }
+    return false;
   }
 
   private async fetchJson<T>(port: number, path: string, init: RequestInit): Promise<T> {

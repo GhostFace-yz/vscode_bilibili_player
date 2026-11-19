@@ -420,7 +420,7 @@ export function Hud({ config, videoHost }: HudProps) {
   };
 
   const switchEpisode = async (index: number) => {
-    const episode = info?.episodes[index];
+    const episode = info?.episodes?.[index];
     if (!episode || !info || index === info.episodeIndex) {
       return;
     }
@@ -567,7 +567,7 @@ export function Hud({ config, videoHost }: HudProps) {
   })();
 
   const episodeLabel =
-    info && info.episodes.length > 1 ? `第 ${info.episodeIndex + 1}/${info.episodes.length} 集` : '';
+    info && (info.episodes?.length ?? 0) > 1 ? `第 ${info.episodeIndex + 1}/${info.episodes.length} 集` : '';
 
   const videoLayer = (
     <div id="bili-skin-video-layer" style={layerStyle}>
@@ -734,7 +734,7 @@ export function Hud({ config, videoHost }: HudProps) {
                 </div>
               </div>
 
-              {info && info.episodes.length > 1 ? (
+              {info && (info.episodes?.length ?? 0) > 1 ? (
                 <div className="bp-flex bp-items-center bp-gap-1.5 bp-border-t bp-border-white/10 bp-pt-2">
                   <button
                     type="button"
@@ -754,7 +754,7 @@ export function Hud({ config, videoHost }: HudProps) {
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      {info.episodes.map((episode, index) => (
+                      {(info.episodes ?? []).map((episode, index) => (
                         <SelectItem key={`${episode.bvid}:${episode.page}:${index}`} value={String(index)}>
                           {`第 ${index + 1} 集 · ${episode.title}`}
                         </SelectItem>
@@ -766,7 +766,7 @@ export function Hud({ config, videoHost }: HudProps) {
                     className="bili-icon-btn"
                     title="下一集"
                     aria-label="下一集"
-                    disabled={info.episodeIndex >= info.episodes.length - 1}
+                    disabled={info.episodeIndex >= (info.episodes?.length ?? 0) - 1}
                     onClick={() => void switchEpisode(info.episodeIndex + 1)}
                   >
                     <ChevronRight width={15} height={15} />

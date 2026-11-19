@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.2.1
+
+- HUD 只连接带 `apiVersion >= 2` 的本地服务，避免多窗口升级期间连到旧版扩展而崩溃
+- `episodes` 等新字段做兼容性判空
+
 ## 0.2.0
 
 - HUD 图标全部替换为 xicons（Tabler），移除 emoji/字符图标

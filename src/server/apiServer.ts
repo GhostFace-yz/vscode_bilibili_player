@@ -1,5 +1,7 @@
 import * as http from 'node:http';
 import { PORT_RANGE } from '../shared/types';
+export const API_VERSION = 2;
+
 import type {
   LoginPoll,
   LoginQr,
@@ -78,7 +80,7 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
   const path = url.pathname;
 
   if (path === '/api/health') {
-    sendJson(res, 200, { ok: true, version: deps.version });
+    sendJson(res, 200, { ok: true, version: deps.version, apiVersion: API_VERSION });
     return;
   }
 
@@ -88,7 +90,7 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
   }
 
   if (path === '/api/ping') {
-    sendJson(res, 200, { ok: true, version: deps.version });
+    sendJson(res, 200, { ok: true, version: deps.version, apiVersion: API_VERSION });
     return;
   }
 
