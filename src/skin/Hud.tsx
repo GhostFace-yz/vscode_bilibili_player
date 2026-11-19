@@ -100,8 +100,10 @@ export function Hud({ config, videoHost }: HudProps) {
   const [loginMessage, setLoginMessage] = useState('');
   const [loginLoading, setLoginLoading] = useState(false);
 
+  const noticeRef = useRef<string | null>(null);
   const stateRef = useRef<SkinState | null>(state);
   stateRef.current = state;
+  noticeRef.current = notice;
   const settingsRef = useRef(settings);
   settingsRef.current = settings;
   const mutedRef = useRef(muted);
@@ -157,6 +159,9 @@ export function Hud({ config, videoHost }: HudProps) {
   // 直接把 B 站 m4s 交给 <audio> 会报 DEMUXER_ERROR_NO_SUPPORTED_STREAMS。
   const audioBackupIndex = useRef(0);
   const audioWavTried = useRef(false);
+  const audioPlayPending = useRef(false);
+  const lastAudioSeek = useRef(0);
+  const mediaLogAt = useRef<Record<string, number>>({});
   const testContextRef = useRef<AudioContext | null>(null);
   const logClient = useCallback(
     (level: 'info' | 'warn' | 'error', message: string, data?: unknown) => {
@@ -598,7 +603,7 @@ export function Hud({ config, videoHost }: HudProps) {
 
   // DASH 是独立音轨：audio 必须严格跟随 video 的播放/暂停/进度。
   const syncAudio = useCallback(
-    function sync(force = false) {
+    function sync() {
       const video = videoRef.current;
       const audio = audioRef.current;
       if (!video || !audio || !audio.getAttribute('src') || audioSwitching.current) {
@@ -616,23 +621,40 @@ export function Hud({ config, videoHost }: HudProps) {
         return;
       }
 
-      if (audio.readyState < 1) {
-        audio.addEventListener('loadedmetadata', () => sync(true), { once: true });
+      if (audio.readyState < 1 || audio.seeking) {
         return;
       }
 
+      // 只在明显漂移时 seek。之前 force 每次 canplay 都写 currentTime，
+      // 会触发 seek -> canplay -> seek 的死循环，几秒内打出上万条事件把渲染进程拖死。
       const drift = audio.currentTime - video.currentTime;
-      // 超过 120ms 直接对齐；阈值太大（之前 350ms）会明显听出音画不同步。
-      if (force || Math.abs(drift) > 0.12) {
+      const now = Date.now();
+      // 最少间隔 1s，避免 seek -> canplay -> seek 的反馈环把渲染进程拖死。
+      if (Math.abs(drift) > 0.3 && !audio.seeking && now - lastAudioSeek.current > 1000) {
+        lastAudioSeek.current = now;
         try {
           audio.currentTime = video.currentTime;
         } catch {
           // 音频尚未可 seek
         }
       }
-      audio.playbackRate = 1;
-      if (audio.paused) {
-        void audio.play().then(() => setAudioBlocked(false)).catch(notePlayError);
+      if (audio.playbackRate !== 1) {
+        audio.playbackRate = 1;
+      }
+      if (audio.paused && !audioPlayPending.current) {
+        audioPlayPending.current = true;
+        void audio
+          .play()
+          .then(() => {
+            setAudioBlocked(false);
+            if (noticeRef.current) {
+              setNotice(null);
+            }
+          })
+          .catch(notePlayError)
+          .finally(() => {
+            audioPlayPending.current = false;
+          });
       }
     },
     [applyMediaSettings, notePlayError],
@@ -724,6 +746,14 @@ export function Hud({ config, videoHost }: HudProps) {
     ];
     const handler = (event: Event) => {
       const media = event.currentTarget as HTMLMediaElement;
+      if (event.type !== 'error') {
+        const now = Date.now();
+        const key = `video:${event.type}`;
+        if (now - (mediaLogAt.current[key] ?? 0) < 1000) {
+          return;
+        }
+        mediaLogAt.current[key] = now;
+      }
       logClient(event.type === 'error' ? 'error' : 'info', `video ${event.type}`, describeMedia(media));
     };
     for (const name of events) {
@@ -744,6 +774,14 @@ export function Hud({ config, videoHost }: HudProps) {
     const events = ['loadstart', 'loadedmetadata', 'canplay', 'playing', 'pause', 'error', 'stalled', 'emptied'];
     const handler = (event: Event) => {
       const media = event.currentTarget as HTMLMediaElement;
+      if (event.type !== 'error') {
+        const now = Date.now();
+        const key = `audio:${event.type}`;
+        if (now - (mediaLogAt.current[key] ?? 0) < 1000) {
+          return;
+        }
+        mediaLogAt.current[key] = now;
+      }
       logClient(event.type === 'error' ? 'error' : 'info', `audio ${event.type}`, describeMedia(media));
     };
     for (const name of events) {
@@ -1361,7 +1399,7 @@ export function Hud({ config, videoHost }: HudProps) {
           onLoadedMetadata={(event) => {
             applyMediaSettings();
             setDuration(event.currentTarget.duration || 0);
-            syncAudio(true);
+            syncAudio();
           }}
           onTimeUpdate={(event) => {
             setCurrentTime(event.currentTarget.currentTime);
@@ -1372,9 +1410,9 @@ export function Hud({ config, videoHost }: HudProps) {
           onPlay={() => {
             applyMediaSettings();
             setPlaying(true);
-            syncAudio(true);
+            syncAudio();
           }}
-          onPlaying={() => syncAudio(true)}
+          onPlaying={() => syncAudio()}
           onPause={(event) => {
             setPlaying(false);
             setAudioBlocked(false);
@@ -1389,7 +1427,7 @@ export function Hud({ config, videoHost }: HudProps) {
             }
           }}
           onSeeking={() => audioRef.current?.pause()}
-          onSeeked={() => syncAudio(true)}
+          onSeeked={() => syncAudio()}
           onWaiting={() => audioRef.current?.pause()}
           onEnded={() => audioRef.current?.pause()}
           onError={handleVideoError}
@@ -1410,8 +1448,8 @@ export function Hud({ config, videoHost }: HudProps) {
             opacity: 0,
             pointerEvents: 'none',
           }}
-          onLoadedMetadata={() => syncAudio(true)}
-          onCanPlay={() => { setNotice(null); syncAudio(true); }}
+          onLoadedMetadata={() => syncAudio()}
+          onCanPlay={() => syncAudio()}
           onError={(event) => {
             if (event.currentTarget === audioRef.current) {
               handleAudioError();

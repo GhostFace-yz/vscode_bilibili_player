@@ -93,6 +93,9 @@ async function initServices(context: vscode.ExtensionContext): Promise<Services>
   try {
     fs.mkdirSync(path.dirname(clientLogPath), { recursive: true });
     fs.mkdirSync(cacheDir, { recursive: true });
+    if (fs.statSync(clientLogPath).size > 5 * 1024 * 1024) {
+      fs.renameSync(clientLogPath, `${clientLogPath}.old`);
+    }
   } catch {
     // 目录已存在或不可写，下面 append 失败会静默忽略
   }

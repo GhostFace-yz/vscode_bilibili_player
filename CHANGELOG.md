@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.4.10
+
+- 修复音画同步反馈环：`syncAudio` 之前每次 `canplay` 都强制写 `audio.currentTime`，触发 `seek -> canplay -> seek` 死循环，几秒内产生 3 万多次事件并把渲染进程拖死（日志里 `audio canplay` / `audio playing` 刷屏，随后 VS Code 窗口崩溃）
+- 现在只在漂移超过 300ms 且距上次 seek 超过 1s 时对齐，并跳过 `audio.seeking` 状态
+- 音频 `play()` 增加 pending 锁，避免同一时刻重复播放
+- 媒体事件日志按类型 1s 节流；`client.log` 超过 5MB 时自动轮转到 `.old`
+- 声音已验证可用：AAC→MP3 转码后 `<audio>` 能正常解码（`audioBytes` 持续增长），`测试声音` 不再是唯一出声路径
+
 ## 0.4.9
 
 - 定位到无声根因：VS Code 自带的 `libffmpeg.dylib` **没有 AAC 解码器**（只有 mp3 / flac / vorbis / pcm），B 站音轨无论是 mp4 内嵌 AAC 还是独立 m4s 都会报 `DEMUXER_ERROR_NO_SUPPORTED_STREAMS`；WAV 测试音能正常解码
