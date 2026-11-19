@@ -168,7 +168,7 @@
   max-width: calc(100vw - 36px);
   overflow: hidden;
   padding: 8px 12px;
-  transition: width 180ms ease, padding 180ms ease;
+  transition: width 460ms cubic-bezier(0.22, 1, 0.36, 1), padding 460ms cubic-bezier(0.22, 1, 0.36, 1);
   border: 1px solid var(--bili-border);
   border-radius: 999px;
   background: var(--bili-bg);
@@ -204,6 +204,16 @@
 
 .bili-pill[data-mini='true'] .bili-pill-content > :not(.bili-play-btn) {
   display: none;
+}
+
+/* 收到迷你状态时播放图标转一整圈；展开时反向转回 */
+.bili-pill .bili-play-btn svg {
+  transform: rotate(0deg);
+  transition: transform 460ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.bili-pill[data-mini='true'] .bili-play-btn svg {
+  transform: rotate(360deg);
 }
 
 /* ---------- shadcn Switch ---------- */

@@ -1021,8 +1021,8 @@ export function Hud({ config, videoHost }: HudProps) {
     morphRef.current = timeline;
 
     if (content) {
-      timeline.to(content, { filter: 'blur(9px)', opacity: 0.6, duration: 0.12, ease: 'power1.out' }, 0);
-      timeline.to(content, { opacity: 0, duration: 0.18, ease: 'power1.in' }, 0.16);
+      timeline.to(content, { filter: 'blur(9px)', opacity: 0.6, duration: 0.18, ease: 'power1.out' }, 0);
+      timeline.to(content, { opacity: 0, duration: 0.24, ease: 'power1.in' }, 0.22);
     }
     timeline.to(
       panel,
@@ -1030,7 +1030,7 @@ export function Hud({ config, videoHost }: HudProps) {
         scaleX: toWidth / fromWidth,
         scaleY: toHeight / fromHeight,
         transformOrigin: '100% 100%',
-        duration: 0.3,
+        duration: 0.5,
         ease: 'power3.inOut',
       },
       0.05,
@@ -1865,6 +1865,14 @@ export function Hud({ config, videoHost }: HudProps) {
             inert={open}
           >
             <div className="bili-pill-content" ref={pillContentRef}>
+              <button
+                type="button"
+                className="bili-play-btn bili-play-btn-small"
+                aria-label={playing ? '暂停' : '播放'}
+                onClick={togglePlay}
+              >
+                {playing ? <PlayerPause width={13} height={13} /> : <PlayerPlay width={13} height={13} />}
+              </button>
               <span className="bp-min-w-0 bp-flex-1 bp-truncate bp-text-[12px] bili-text">
                 {info?.title ?? 'B站视频皮肤'}
               </span>
@@ -1885,15 +1893,6 @@ export function Hud({ config, videoHost }: HudProps) {
                 onClick={() => void hideSkin()}
               >
                 <X width={14} height={14} />
-              </button>
-              {/* 放在最右侧：胶囊收成 mini 时只保留这个按钮，展开时它也不会从鼠标下移走 */}
-              <button
-                type="button"
-                className="bili-play-btn bili-play-btn-small"
-                aria-label={playing ? '暂停' : '播放'}
-                onClick={togglePlay}
-              >
-                {playing ? <PlayerPause width={13} height={13} /> : <PlayerPlay width={13} height={13} />}
               </button>
             </div>
           </div>
