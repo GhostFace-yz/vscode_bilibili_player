@@ -124,13 +124,27 @@ export function Hud({ config, videoHost }: HudProps) {
   }, []);
 
   const notePlayError = useCallback((error: unknown) => {
+    const name =
+      error instanceof DOMException
+        ? error.name
+        : typeof error === 'object' && error !== null && 'name' in error
+          ? String((error as { name?: unknown }).name)
+          : '';
+    // 暂停/切源会打断 play()，这是正常 AbortError，不能弹“被阻止”提示。
+    if (name === 'AbortError') {
+      return;
+    }
     mediaErrorRef.current = toMessage(error);
-    setAudioBlocked(true);
+    if (name === 'NotAllowedError') {
+      setAudioBlocked(true);
+    }
   }, []);
 
   const requestedKey = useRef('');
   const loadSeq = useRef(0);
   const audioSwitching = useRef(false);
+  const audioBackupIndex = useRef(0);
+  const audioFallbackRef = useRef(false);
   const visibleRef = useRef(true);
   const mediaErrorRef = useRef<string | null>(null);
   const backupIndex = useRef(0);
@@ -193,6 +207,8 @@ export function Hud({ config, videoHost }: HudProps) {
       // 否则加载期间 250ms 的 syncAudio 会把刚暂停的旧 audio 重新 play，
       // 等新音轨挂载后旧 audio 已被卸载，却可能作为 detached element 继续出声。
       audioSwitching.current = true;
+      audioBackupIndex.current = 0;
+      audioFallbackRef.current = false;
       audioRef.current?.pause();
       setAudioSrc(null);
       setLoading(true);
@@ -224,6 +240,31 @@ export function Hud({ config, videoHost }: HudProps) {
     },
     [api],
   );
+
+  const handleAudioError = useCallback(() => {
+    const audio = audioRef.current;
+    if (audio?.error) {
+      mediaErrorRef.current = `audio error ${audio.error.code}: ${audio.error.message}`;
+    }
+    if (!info) {
+      return;
+    }
+    const backup = info.audioBackupUrls?.[audioBackupIndex.current];
+    if (backup) {
+      audioBackupIndex.current += 1;
+      setAudioSrc(backup);
+      return;
+    }
+    // DASH 音轨 CDN 失败时自动回退 720P 原生 mp4（音轨在 video 里），保证有声音。
+    if (info.quality > 64 && !audioFallbackRef.current) {
+      audioFallbackRef.current = true;
+      setNotice('DASH 音轨加载失败，已切换到 720P 保证有声音');
+      void load({ bvid: info.bvid, page: info.page }, 64);
+      return;
+    }
+    setAudioBlocked(false);
+    setError('音轨加载失败，请尝试 720P 或点重试');
+  }, [info, load]);
 
   const refreshPlayInfo = useCallback(() => {
     const ref = stateRef.current?.video;
@@ -280,6 +321,10 @@ export function Hud({ config, videoHost }: HudProps) {
         void video.play().then(() => setAudioBlocked(false)).catch(notePlayError);
       }
       const audio = audioRef.current;
+      if (audio?.error) {
+        handleAudioError();
+        return;
+      }
       if (audio && audio.paused && !mutedRef.current) {
         void audio.play().then(() => setAudioBlocked(false)).catch(notePlayError);
       }
@@ -290,7 +335,7 @@ export function Hud({ config, videoHost }: HudProps) {
       window.removeEventListener('pointerdown', unlock, true);
       window.removeEventListener('keydown', unlock, true);
     };
-  }, [applyMediaSettings, notePlayError]);
+  }, [applyMediaSettings, notePlayError, handleAudioError]);
 
   // 把真实媒体状态报到本地 API，方便排查“有画面没声音/双音轨”问题。
   useEffect(() => {
@@ -307,6 +352,8 @@ export function Hud({ config, videoHost }: HudProps) {
             currentTime: Math.round(media.currentTime * 1000) / 1000,
             readyState: media.readyState,
             error: media.error ? media.error.code : null,
+            errorMessage: media.error?.message,
+            networkState: media.networkState,
             audioBytes: (media as HTMLMediaElement & { webkitAudioDecodedByteCount?: number })
               .webkitAudioDecodedByteCount,
           }
@@ -509,6 +556,7 @@ export function Hud({ config, videoHost }: HudProps) {
     if (!audio) {
       return;
     }
+    audio.setAttribute('referrerpolicy', 'no-referrer');
     audio.load();
     applyMediaSettings();
   }, [audioSrc, applyMediaSettings]);
@@ -932,13 +980,6 @@ export function Hud({ config, videoHost }: HudProps) {
     }
     // 用户点击是手势，确保此时把静音/音量重新应用一次再 play，避免自动播放阶段被静音后一直无声。
     applyMediaSettings();
-    const audio = audioRef.current;
-    // DASH 情况下 video 可能已经在播、但独立 audio 被自动播放策略挡住；
-    // 这时第一次点播放键应该先解锁声音，而不是把 video 暂停掉。
-    if (!video.paused && audio && audio.paused && !mutedRef.current) {
-      void audio.play().then(() => setAudioBlocked(false)).catch(notePlayError);
-      return;
-    }
     if (video.paused) {
       void video
         .play()
@@ -1108,6 +1149,7 @@ export function Hud({ config, videoHost }: HudProps) {
           onPlaying={() => syncAudio(true)}
           onPause={(event) => {
             setPlaying(false);
+            setAudioBlocked(false);
             const audio = audioRef.current;
             if (audio) {
               audio.pause();
@@ -1132,12 +1174,20 @@ export function Hud({ config, videoHost }: HudProps) {
           src={audioSrc}
           muted={muted}
           preload="auto"
-          style={{ display: 'none' }}
+          aria-hidden="true"
+          style={{
+            position: 'absolute',
+            width: 1,
+            height: 1,
+            opacity: 0,
+            pointerEvents: 'none',
+          }}
           onLoadedMetadata={() => syncAudio(true)}
           onCanPlay={() => syncAudio(true)}
-          onError={() => {
-            mediaErrorRef.current = 'audio element error';
-            setAudioBlocked(true);
+          onError={(event) => {
+            if (event.currentTarget === audioRef.current) {
+              handleAudioError();
+            }
           }}
         />
       ) : null}

@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.4.6
+
+- 修复 DASH 音轨在 VS Code 中 `MEDIA_ERR_SRC_NOT_SUPPORTED`（诊断显示 audio.error=4）导致无声：audio 增加 `no-referrer`、改为 1px 可视隐藏元素、音轨失败时依次尝试 `audioBackupUrls`，全部失败自动回退 720P 原生 mp4（音轨在 video 内）
+- 忽略暂停导致的 `AbortError`，不再弹出“声音被阻止”黄色提示
+- 移除“点播放键先解锁音轨”的特殊分支，恢复播放键始终可暂停
+- 诊断上报增加 audio.error.message / networkState
+
 ## 0.4.5
 
 - 增加 `/api/diagnostics` 本地诊断端点，HUD 每 2s 上报真实媒体状态（video/audio 的 muted/volume/paused/readyState/error、音画 drift、外部 media）
