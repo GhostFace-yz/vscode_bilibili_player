@@ -1014,12 +1014,11 @@ export function Hud({ config, videoHost }: HudProps) {
       setOpen(false);
       return;
     }
-    // offsetWidth/offsetHeight 不受当前 transform 影响，快速连续点击也不会算错目标比例。
-    const fromWidth = panel.offsetWidth;
+    // 只动画面板高度，内容保持原始布局；超出部分由 overflow:hidden 裁掉，
+    // 不做 scale，避免设置项在收起过程中被纵向压扁。
     const fromHeight = panel.offsetHeight;
-    const toWidth = pill.offsetWidth;
     const toHeight = pill.offsetHeight;
-    if (fromWidth < 1 || fromHeight < 1 || toWidth < 1 || toHeight < 1) {
+    if (fromHeight < 1 || toHeight < 1) {
       setOpen(false);
       return;
     }
@@ -1038,12 +1037,11 @@ export function Hud({ config, videoHost }: HudProps) {
       timeline.to(content, { filter: 'blur(9px)', opacity: 0.6, duration: 0.18, ease: 'power1.out' }, 0);
       timeline.to(content, { opacity: 0, duration: 0.24, ease: 'power1.in' }, 0.22);
     }
+    gsap.set(panel, { height: fromHeight, overflow: 'hidden' });
     timeline.to(
       panel,
       {
-        scaleX: toWidth / fromWidth,
-        scaleY: toHeight / fromHeight,
-        transformOrigin: '100% 100%',
+        height: toHeight,
         duration: 0.5,
         ease: 'power3.inOut',
       },
@@ -1058,12 +1056,16 @@ export function Hud({ config, videoHost }: HudProps) {
       return;
     }
 
+    if (!open) {
+      gsap.set(panel, { clearProps: 'height' });
+    }
+
     if (open && pendingExpandFrom.current) {
       const from = pendingExpandFrom.current;
       pendingExpandFrom.current = null;
       morphRef.current?.kill();
-      // 上一次收起可能留下了缩放 transform，先清掉才能量到完整尺寸。
-      gsap.set(panel, { clearProps: 'transform,transformOrigin' });
+      // 上一次收起可能留下了高度/缩放，先清掉才能量到完整尺寸。
+      gsap.set(panel, { clearProps: 'transform,transformOrigin,height' });
       const width = panel.offsetWidth;
       const height = panel.offsetHeight;
       if (width < 1 || height < 1) {
@@ -1071,18 +1073,15 @@ export function Hud({ config, videoHost }: HudProps) {
       }
 
       const content = panelContentRef.current;
-      gsap.set(panel, {
-        transformOrigin: '100% 100%',
-        scaleX: from.width / width,
-        scaleY: from.height / height,
-      });
+      // 从胶囊高度开始长高，内容不缩放，只在可视区域内逐渐露出来。
+      gsap.set(panel, { height: from.height, overflow: 'hidden' });
       if (content) {
         gsap.set(content, { filter: 'blur(12px)', opacity: 0.5 });
       }
 
       const timeline = gsap.timeline({
         onComplete: () => {
-          gsap.set(panel, { clearProps: 'transform,transformOrigin' });
+          gsap.set(panel, { clearProps: 'height,transform,transformOrigin' });
           if (content) {
             gsap.set(content, { clearProps: 'filter,opacity' });
           }
@@ -1093,7 +1092,7 @@ export function Hud({ config, videoHost }: HudProps) {
         timeline.to(content, { filter: 'blur(5px)', opacity: 1, duration: 0.2, ease: 'power1.out' }, 0);
         timeline.to(content, { filter: 'blur(0px)', duration: 0.26, ease: 'power2.out' }, 0.2);
       }
-      timeline.to(panel, { scaleX: 1, scaleY: 1, duration: 0.44, ease: 'power3.out' }, 0);
+      timeline.to(panel, { height, duration: 0.5, ease: 'power3.out' }, 0);
       return;
     }
 
