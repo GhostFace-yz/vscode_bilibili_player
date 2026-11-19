@@ -98,7 +98,17 @@ pnpm run vsix
    ```
    令牌在 workbench 目录的 `bilibili-skin.config.js` 里。
 
-音轨为什么要先 `fetch` 成 Blob：workbench 里 `<audio src="http://127.0.0.1:...">` 会被静默拦截（`error 4`，`message` 为空），而同一个 URL 用 CORS `fetch` 是通的。0.4.8 因此把音轨字节抓下来，再用 `blob:` URL 交给 `<audio>`；720P 原生 mp4 则直接使用内嵌 AAC，播放 4 秒后若解码字节数仍为 0 会自动切到独立音轨。
+### 为什么需要转码
+
+VS Code 自带的 `libffmpeg` 没有 AAC 解码器（只有 mp3 / flac / vorbis / pcm），B 站音轨无论是 mp4 内嵌 AAC 还是独立 m4s，都会报 `DEMUXER_ERROR_NO_SUPPORTED_STREAMS`，表现就是有画面没声音。WAV 测试音能正常解码，正好印证这一点。
+
+0.4.9 起音频由扩展宿主转码后再交给 `<audio>`：
+
+- 优先使用 `ffmpeg`（`/opt/homebrew/bin/ffmpeg`、`/usr/local/bin/ffmpeg`、`/usr/bin/ffmpeg` 或 PATH 中的 `ffmpeg`）转成 192k MP3
+- macOS 没有 ffmpeg 时使用系统自带 `afconvert` 转成 32kHz 单声道 WAV
+- 转码结果按 m4s 路径缓存到 globalStorage 的 `audio-cache/`，之后拖动/重播都走 Range，不再重复转码
+
+所以：**想听声音需要安装 ffmpeg**（macOS 也可直接依赖系统 `afconvert`）。扩展启动时会在「Bilibili 皮肤」输出通道打印当前使用的转码器。
 
 ## 设置
 

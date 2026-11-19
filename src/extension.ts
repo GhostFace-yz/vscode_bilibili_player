@@ -6,6 +6,7 @@ import { BiliAuth, type SecretStore } from './bilibili/auth';
 import { parseVideoInput, describeVideo } from './bilibili/parse';
 import { getPlayInfo } from './bilibili/playurl';
 import { getSettings } from './config';
+import { findAudioTranscoder } from './server/audioTranscode';
 import { startApiServer, type ApiServerHandle } from './server/apiServer';
 import { renderSkinConfig, type SkinConfig } from './shared/types';
 import { ExtensionState } from './state';
@@ -88,8 +89,10 @@ async function initServices(context: vscode.ExtensionContext): Promise<Services>
   const state = new ExtensionState(context, auth);
   const version = String(context.extension.packageJSON.version ?? '0.0.0');
   const clientLogPath = path.join(context.globalStorageUri.fsPath, 'client.log');
+  const cacheDir = path.join(context.globalStorageUri.fsPath, 'audio-cache');
   try {
     fs.mkdirSync(path.dirname(clientLogPath), { recursive: true });
+    fs.mkdirSync(cacheDir, { recursive: true });
   } catch {
     // 目录已存在或不可写，下面 append 失败会静默忽略
   }
@@ -98,6 +101,7 @@ async function initServices(context: vscode.ExtensionContext): Promise<Services>
   const server = await startApiServer({
     token,
     version,
+    cacheDir,
     getState: () => state.snapshot(),
     patchState: (patch) => state.patch(patch),
     getPlayInfo: async (ref, qn) => {
@@ -105,12 +109,13 @@ async function initServices(context: vscode.ExtensionContext): Promise<Services>
       if (!apiPort) {
         return info;
       }
-      const proxy = (audioUrl: string) =>
-        `http://127.0.0.1:${apiPort}/api/audio?url=${encodeURIComponent(audioUrl)}&token=${encodeURIComponent(token)}`;
+      // 音轨要在扩展宿主里转成 MP3/WAV：VS Code 的 libffmpeg 没有 AAC 解码器。
+      const transcoded = (audioUrl: string) =>
+        `http://127.0.0.1:${apiPort}/api/audio/transcoded?url=${encodeURIComponent(audioUrl)}&token=${encodeURIComponent(token)}`;
       return {
         ...info,
-        audioUrl: info.audioUrl ? proxy(info.audioUrl) : undefined,
-        audioBackupUrls: info.audioBackupUrls?.map(proxy),
+        audioUrl: info.audioUrl ? transcoded(info.audioUrl) : undefined,
+        audioBackupUrls: info.audioBackupUrls?.map(transcoded),
       };
     },
     loginQr: () => auth.generateQr(),
@@ -138,6 +143,7 @@ async function initServices(context: vscode.ExtensionContext): Promise<Services>
   apiPort = server.port;
   log(`本地 API 已启动：http://127.0.0.1:${server.port}`);
   log(`客户端日志：${clientLogPath}`);
+  log(`音频转码器：${findAudioTranscoder()?.name ?? '未找到（无法播放 AAC 音轨）'}`);
 
   const started: Services = { auth, state, server, token };
   await syncSkinConfig(context, started);

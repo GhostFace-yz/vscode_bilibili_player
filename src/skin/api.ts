@@ -77,8 +77,8 @@ export class SkinApi {
     }
   }
 
-  testToneUrl(): string {
-    return `http://127.0.0.1:${this.preferredPort}/api/test-tone.wav?token=${encodeURIComponent(
+  testToneUrl(extension: 'wav' | 'mp3' = 'wav'): string {
+    return `http://127.0.0.1:${this.preferredPort}/api/test-tone.${extension}?token=${encodeURIComponent(
       this.config.token,
     )}`;
   }

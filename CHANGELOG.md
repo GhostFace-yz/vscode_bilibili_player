@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.4.9
+
+- 定位到无声根因：VS Code 自带的 `libffmpeg.dylib` **没有 AAC 解码器**（只有 mp3 / flac / vorbis / pcm），B 站音轨无论是 mp4 内嵌 AAC 还是独立 m4s 都会报 `DEMUXER_ERROR_NO_SUPPORTED_STREAMS`；WAV 测试音能正常解码
+- 音频改由扩展宿主转码：`ffmpeg`（优先，AAC→MP3 192k）或 macOS 自带 `afconvert`（兜底，AAC→32kHz 单声道 WAV），再交给 `<audio>` 播放
+- `/api/audio/transcoded` 按 m4s 路径缓存转码结果，支持 Range/拖动；缓存保留最近 8 个文件
+- 原生 720P 也使用转码音轨，video 始终静音，避免 AAC 内嵌音轨无声
+- 「测试声音」增加 MP3/WAV 探测和 `canPlayType` / `MediaSource.isTypeSupported` 日志，用来确认 workbench 的解码能力
+- 移除 0.4.8 的 fetch→Blob 音轨路径（问题不是网络，是 AAC 解码）
+
 ## 0.4.8
 
 - 独立音轨改为 `fetch -> Blob -> <audio src="blob:...">`：workbench 里 `<audio>` 直接请求 `http://127.0.0.1` 会被静默拦截（`error 4` 且 message 为空），而同一 URL 用 CORS `fetch` 正常，因此先把音轨字节抓下来再播放，并保留多个 CDN 备选源

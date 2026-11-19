@@ -1,5 +1,11 @@
+import { createHash } from 'node:crypto';
+import * as fs from 'node:fs';
 import * as http from 'node:http';
+import * as path from 'node:path';
 import { Readable } from 'node:stream';
+import { pipeline } from 'node:stream/promises';
+import { findAudioTranscoder, type AudioTranscoder } from './audioTranscode';
+import { TEST_TONE_MP3 } from './tone';
 import { PORT_RANGE } from '../shared/types';
 import type {
   LoginPoll,
@@ -32,6 +38,7 @@ export interface ApiServerDeps {
   loginPoll(key: string): Promise<LoginPoll>;
   logout(): Promise<void>;
   version: string;
+  cacheDir: string;
   log?(message: string): void;
   clientLog?(entry: ClientLogEntry): void;
 }
@@ -136,6 +143,11 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
     return;
   }
 
+  if (path === '/api/audio/transcoded' && (req.method === 'GET' || req.method === 'HEAD')) {
+    await serveTranscodedAudio(req, res, url, deps);
+    return;
+  }
+
   if (path === '/api/test-tone.wav' && req.method === 'GET') {
     const wav = getTestToneWav();
     res.writeHead(200, {
@@ -144,6 +156,17 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
       'Cache-Control': 'no-store',
     });
     res.end(wav);
+    return;
+  }
+
+  if (path === '/api/test-tone.mp3' && req.method === 'GET') {
+    const mp3 = Buffer.from(TEST_TONE_MP3, 'base64');
+    res.writeHead(200, {
+      'Content-Type': 'audio/mpeg',
+      'Content-Length': mp3.length,
+      'Cache-Control': 'no-store',
+    });
+    res.end(mp3);
     return;
   }
 
@@ -199,6 +222,186 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
   sendJson(res, 404, { error: 'Not found' });
 }
 
+const transcodeJobs = new Map<string, Promise<void>>();
+
+/**
+ * VS Code 的 libffmpeg 没有 AAC 解码器，直接把 B 站 m4s 交给 <audio> 会报
+ * DEMUXER_ERROR_NO_SUPPORTED_STREAMS。这里先转成 MP3（ffmpeg）或 WAV（afconvert），
+ * 转码结果按 m4s 路径缓存，后续播放/拖动都直接走 Range。
+ */
+async function serveTranscodedAudio(
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+  url: URL,
+  deps: ApiServerDeps,
+): Promise<void> {
+  let target: URL;
+  try {
+    target = new URL(url.searchParams.get('url') ?? '');
+  } catch {
+    sendJson(res, 400, { error: '缺少或非法 url' });
+    return;
+  }
+  if (target.protocol !== 'https:' || !isAllowedAudioHost(target.hostname)) {
+    sendJson(res, 400, { error: '不支持的音轨地址' });
+    return;
+  }
+
+  const transcoder = findAudioTranscoder();
+  if (!transcoder) {
+    sendJson(res, 503, {
+      error: '没有可用的音频转码器：请安装 ffmpeg（macOS 也可使用系统自带 afconvert）',
+    });
+    return;
+  }
+
+  const key = createHash('sha1').update(target.pathname).digest('hex').slice(0, 24);
+  const file = path.join(deps.cacheDir, `${key}.${transcoder.extension}`);
+  try {
+    await ensureTranscoded(target, file, transcoder, deps);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    deps.log?.(`音轨转码失败：${message}`);
+    sendJson(res, 502, { error: `音轨转码失败：${message}` });
+    return;
+  }
+  await serveFile(req, res, file, transcoder.contentType);
+}
+
+async function ensureTranscoded(
+  target: URL,
+  file: string,
+  transcoder: AudioTranscoder,
+  deps: ApiServerDeps,
+): Promise<void> {
+  try {
+    if (fs.statSync(file).size > 0) {
+      return;
+    }
+  } catch {
+    // 还没缓存
+  }
+
+  const existing = transcodeJobs.get(file);
+  if (existing) {
+    await existing;
+    return;
+  }
+
+  const job = (async () => {
+    await fs.promises.mkdir(path.dirname(file), { recursive: true });
+    const input = `${file}.source.m4s`;
+    const tmp = `${file}.${process.pid}.${Date.now()}.tmp.${transcoder.extension}`;
+    try {
+      await downloadToFile(target, input);
+      deps.log?.(`音轨转码：${transcoder.name} → ${path.basename(file)}`);
+      await transcoder.convert(input, tmp);
+      await fs.promises.rename(tmp, file);
+    } finally {
+      await fs.promises.rm(input, { force: true });
+      await fs.promises.rm(tmp, { force: true });
+    }
+    pruneCache(deps.cacheDir, 8);
+  })();
+
+  transcodeJobs.set(file, job);
+  try {
+    await job;
+  } finally {
+    transcodeJobs.delete(file);
+  }
+}
+
+async function downloadToFile(target: URL, file: string): Promise<void> {
+  const upstream = await fetch(target, {
+    headers: {
+      Referer: 'https://www.bilibili.com/',
+      'User-Agent':
+        'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120 Safari/537.36',
+    },
+  });
+  if (!upstream.ok || !upstream.body) {
+    throw new Error(`音轨下载 HTTP ${upstream.status}`);
+  }
+  await pipeline(
+    Readable.fromWeb(upstream.body as unknown as import('node:stream/web').ReadableStream),
+    fs.createWriteStream(file),
+  );
+}
+
+async function serveFile(
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+  file: string,
+  contentType: string,
+): Promise<void> {
+  const stat = await fs.promises.stat(file);
+  const total = stat.size;
+  const range = req.headers.range;
+  let start = 0;
+  let end = total - 1;
+  let status = 200;
+
+  if (range) {
+    const match = /^bytes=(\d*)-(\d*)$/.exec(range);
+    if (match) {
+      start = match[1] ? Number(match[1]) : 0;
+      end = match[2] ? Number(match[2]) : total - 1;
+      if (Number.isFinite(start) && Number.isFinite(end) && start <= end && start < total) {
+        end = Math.min(end, total - 1);
+        status = 206;
+        res.setHeader('Content-Range', `bytes ${start}-${end}/${total}`);
+      } else {
+        res.writeHead(416, { 'Content-Range': `bytes */${total}` }).end();
+        return;
+      }
+    }
+  }
+
+  res.writeHead(status, {
+    'Content-Type': contentType,
+    'Content-Length': end - start + 1,
+    'Accept-Ranges': 'bytes',
+    'Cache-Control': 'no-store',
+  });
+
+  if (req.method === 'HEAD') {
+    res.end();
+    return;
+  }
+
+  const stream = fs.createReadStream(file, { start, end });
+  stream.on('error', () => res.destroy());
+  req.on('close', () => stream.destroy());
+  stream.pipe(res);
+}
+
+function pruneCache(dir: string, keep: number): void {
+  try {
+    const files = fs
+      .readdirSync(dir)
+      .filter((name) => name.endsWith('.mp3') || name.endsWith('.wav'))
+      .map((name) => ({ name, time: fs.statSync(path.join(dir, name)).mtimeMs }))
+      .sort((a, b) => b.time - a.time);
+    for (const entry of files.slice(keep)) {
+      fs.rmSync(path.join(dir, entry.name), { force: true });
+    }
+  } catch {
+    // 清理失败不影响播放
+  }
+}
+
+function isAllowedAudioHost(hostname: string): boolean {
+  const host = hostname.toLowerCase();
+  return (
+    host.endsWith('.bilivideo.com') ||
+    host.endsWith('.bilivideo.cn') ||
+    host.endsWith('.mountaintoys.cn') ||
+    host.includes('akamaized') ||
+    host.endsWith('.bilibili.com')
+  );
+}
+
 /**
  * 把 B 站音轨从扩展宿主转发给 workbench 的 <audio>。
  * 直接让渲染进程请求 CDN 的 m4s 时，VS Code 里会出现 MEDIA_ERR_SRC_NOT_SUPPORTED；
@@ -221,14 +424,7 @@ async function proxyAudio(req: http.IncomingMessage, res: http.ServerResponse, u
     sendJson(res, 400, { error: '只允许 https 音轨' });
     return;
   }
-  const host = target.hostname.toLowerCase();
-  const allowed =
-    host.endsWith('.bilivideo.com') ||
-    host.endsWith('.bilivideo.cn') ||
-    host.endsWith('.mountaintoys.cn') ||
-    host.includes('akamaized') ||
-    host.endsWith('.bilibili.com');
-  if (!allowed) {
+  if (!isAllowedAudioHost(target.hostname)) {
     sendJson(res, 400, { error: '不支持的音轨域名' });
     return;
   }
