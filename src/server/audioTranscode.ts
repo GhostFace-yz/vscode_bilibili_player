@@ -21,26 +21,40 @@ const FFMPEG_CANDIDATES = [
   '/usr/bin/ffmpeg',
 ].filter((value): value is string => Boolean(value));
 
-let cached: AudioTranscoder | null | undefined;
+let cachedMp3: AudioTranscoder | null | undefined;
+let cachedWav: AudioTranscoder | null | undefined;
 
-export function findAudioTranscoder(): AudioTranscoder | null {
-  if (cached !== undefined) {
-    return cached;
+export function findAudioTranscoder(prefer: 'mp3' | 'wav' = 'mp3'): AudioTranscoder | null {
+  const ffmpeg = FFMPEG_CANDIDATES.find(isExecutable) ?? findInPath('ffmpeg');
+
+  if (prefer === 'wav') {
+    if (cachedWav !== undefined) {
+      return cachedWav;
+    }
+    cachedWav = ffmpeg
+      ? ffmpegWavTranscoder(ffmpeg)
+      : process.platform === 'darwin' && isExecutable('/usr/bin/afconvert')
+        ? afconvertTranscoder('/usr/bin/afconvert')
+        : null;
+    return cachedWav;
   }
 
-  const ffmpeg = FFMPEG_CANDIDATES.find(isExecutable) ?? findInPath('ffmpeg');
+  if (cachedMp3 !== undefined) {
+    return cachedMp3;
+  }
+
   if (ffmpeg) {
-    cached = ffmpegTranscoder(ffmpeg);
-    return cached;
+    cachedMp3 = ffmpegTranscoder(ffmpeg);
+    return cachedMp3;
   }
 
   if (process.platform === 'darwin' && isExecutable('/usr/bin/afconvert')) {
-    cached = afconvertTranscoder('/usr/bin/afconvert');
-    return cached;
+    cachedMp3 = afconvertTranscoder('/usr/bin/afconvert');
+    return cachedMp3;
   }
 
-  cached = null;
-  return cached;
+  cachedMp3 = null;
+  return cachedMp3;
 }
 
 function ffmpegTranscoder(bin: string): AudioTranscoder {
@@ -64,6 +78,30 @@ function ffmpegTranscoder(bin: string): AudioTranscoder {
         '48000',
         '-ac',
         '2',
+        output,
+      ]),
+  };
+}
+
+function ffmpegWavTranscoder(bin: string): AudioTranscoder {
+  return {
+    name: `ffmpeg wav (${bin})`,
+    extension: 'wav',
+    contentType: 'audio/wav',
+    convert: (input, output) =>
+      run(bin, [
+        '-y',
+        '-v',
+        'error',
+        '-i',
+        input,
+        '-vn',
+        '-c:a',
+        'pcm_s16le',
+        '-ar',
+        '32000',
+        '-ac',
+        '1',
         output,
       ]),
   };

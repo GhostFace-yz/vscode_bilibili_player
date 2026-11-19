@@ -247,7 +247,7 @@ async function serveTranscodedAudio(
     return;
   }
 
-  const transcoder = findAudioTranscoder();
+  const transcoder = findAudioTranscoder(url.searchParams.get('format') === 'wav' ? 'wav' : 'mp3');
   if (!transcoder) {
     sendJson(res, 503, {
       error: '没有可用的音频转码器：请安装 ffmpeg（macOS 也可使用系统自带 afconvert）',

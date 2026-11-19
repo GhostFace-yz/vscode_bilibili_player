@@ -156,6 +156,7 @@ export function Hud({ config, videoHost }: HudProps) {
   // 独立音轨是扩展宿主转码后的 MP3/WAV：VS Code 的 libffmpeg 没有 AAC 解码器，
   // 直接把 B 站 m4s 交给 <audio> 会报 DEMUXER_ERROR_NO_SUPPORTED_STREAMS。
   const audioBackupIndex = useRef(0);
+  const audioWavTried = useRef(false);
   const testContextRef = useRef<AudioContext | null>(null);
   const logClient = useCallback(
     (level: 'info' | 'warn' | 'error', message: string, data?: unknown) => {
@@ -218,6 +219,7 @@ export function Hud({ config, videoHost }: HudProps) {
       // 等新音轨挂载后旧 audio 已被卸载，却可能作为 detached element 继续出声。
       audioSwitching.current = true;
       audioBackupIndex.current = 0;
+      audioWavTried.current = false;
       audioFallbackRef.current = false;
       audioRef.current?.pause();
       setAudioSrc(null);
@@ -268,6 +270,13 @@ export function Hud({ config, videoHost }: HudProps) {
       mediaErrorRef.current = `audio error ${audio.error.code}: ${audio.error.message}`;
     }
     setNotice(null);
+    // MP3 解不了时退回 PCM WAV（VS Code 一定能解码）。
+    if (!audioWavTried.current && info?.audioUrl && !info.audioUrl.includes('format=wav')) {
+      audioWavTried.current = true;
+      audioSwitching.current = false;
+      setAudioSrc(`${info.audioUrl}&format=wav`);
+      return;
+    }
     const backup = info?.audioBackupUrls?.[audioBackupIndex.current];
     if (backup) {
       audioBackupIndex.current += 1;
