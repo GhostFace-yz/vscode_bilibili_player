@@ -49,6 +49,7 @@ const REDUCED_MOTION =
 export function Hud({ config, videoHost }: HudProps) {
   const api = useMemo(() => new SkinApi(config), [config]);
   const videoRef = useRef<HTMLVideoElement | null>(null);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
   const hudRootRef = useRef<HTMLDivElement | null>(null);
   const panelRef = useRef<HTMLDivElement | null>(null);
   const pillRef = useRef<HTMLDivElement | null>(null);
@@ -59,6 +60,16 @@ export function Hud({ config, videoHost }: HudProps) {
   const [settings, setSettings] = useState<SkinSettings>(DEFAULT_SKIN_SETTINGS);
   const [info, setInfo] = useState<PlayInfo | null>(null);
   const [srcUrl, setSrcUrl] = useState<string | null>(null);
+  const [audioSrc, setAudioSrc] = useState<string | null>(null);
+  const [editorBounds, setEditorBounds] = useState<{
+    left: number;
+    top: number;
+    width: number;
+    height: number;
+    right: number;
+    bottom: number;
+  } | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const [online, setOnline] = useState(true);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -138,19 +149,21 @@ export function Hud({ config, videoHost }: HudProps) {
   }, [state]);
 
   const load = useCallback(
-    async (ref: VideoRef, qn: number): Promise<boolean> => {
+    async (ref: VideoRef, qn: number): Promise<PlayInfo | null> => {
       setLoading(true);
       setError(null);
+      setNotice(null);
       try {
         const next = await api.play(ref, qn);
         setInfo(next);
         setSrcUrl(next.url);
+        setAudioSrc(next.audioUrl ?? null);
         backupIndex.current = 0;
         setDuration(next.duration || 0);
-        return true;
+        return next;
       } catch (loadError) {
         setError(toMessage(loadError));
-        return false;
+        return null;
       } finally {
         setLoading(false);
       }
@@ -191,6 +204,7 @@ export function Hud({ config, videoHost }: HudProps) {
   useEffect(() => {
     if (!visible) {
       videoRef.current?.pause();
+      audioRef.current?.pause();
     }
   }, [visible]);
 
@@ -286,13 +300,133 @@ export function Hud({ config, videoHost }: HudProps) {
     if (videoRef.current) {
       videoRef.current.muted = muted;
     }
+    if (audioRef.current) {
+      audioRef.current.muted = muted;
+    }
   }, [muted]);
 
   useEffect(() => {
     if (videoRef.current) {
       videoRef.current.volume = volume;
     }
+    if (audioRef.current) {
+      audioRef.current.volume = volume;
+    }
   }, [volume]);
+
+  // DASH 是独立音轨：让 audio 跟随 video 的播放/暂停/进度，并做轻量漂移修正
+  const syncAudio = useCallback(function sync(force = false) {
+    const video = videoRef.current;
+    const audio = audioRef.current;
+    if (!video || !audio || !audio.getAttribute('src')) {
+      return;
+    }
+    if (audio.readyState < 1) {
+      audio.addEventListener('loadedmetadata', () => sync(true), { once: true });
+      return;
+    }
+    if (force || Math.abs(audio.currentTime - video.currentTime) > 0.35) {
+      try {
+        audio.currentTime = video.currentTime;
+      } catch {
+        // 音频尚未可 seek
+      }
+    }
+    if (video.paused) {
+      audio.pause();
+    } else {
+      void audio.play().catch(() => undefined);
+    }
+  }, []);
+
+  // HUD 也要贴住编辑区右下角（真正定位的是 main.tsx 创建的 #bili-skin-hud 宿主）
+  useEffect(() => {
+    const host = document.getElementById('bili-skin-hud');
+    if (!host) {
+      return;
+    }
+    if (!editorBounds) {
+      host.style.right = '';
+      host.style.bottom = '';
+      return;
+    }
+    host.style.right = `${Math.max(12, window.innerWidth - editorBounds.right + 18)}px`;
+    host.style.bottom = `${Math.max(12, window.innerHeight - editorBounds.bottom + 18)}px`;
+    return () => {
+      host.style.right = '';
+      host.style.bottom = '';
+    };
+  }, [editorBounds]);
+
+  // 视频只铺编辑区：跟随编辑器内容区域的大小和位置
+  useEffect(() => {
+    let disposed = false;
+    let target: HTMLElement | null = null;
+    let observer: ResizeObserver | undefined;
+
+    const findTarget = () =>
+      document.querySelector<HTMLElement>('.monaco-workbench .part.editor > .content') ??
+      document.querySelector<HTMLElement>('.monaco-workbench .part.editor');
+
+    const measure = () => {
+      if (disposed) {
+        return;
+      }
+      if (!target || !target.isConnected) {
+        target = findTarget();
+        if (target) {
+          observer?.observe(target);
+        }
+      }
+      if (!target) {
+        return;
+      }
+      const rect = target.getBoundingClientRect();
+      if (rect.width < 2 || rect.height < 2) {
+        return;
+      }
+      setEditorBounds((previous) => {
+        if (
+          previous &&
+          Math.abs(previous.left - rect.left) < 0.5 &&
+          Math.abs(previous.top - rect.top) < 0.5 &&
+          Math.abs(previous.width - rect.width) < 0.5 &&
+          Math.abs(previous.height - rect.height) < 0.5
+        ) {
+          return previous;
+        }
+        return {
+          left: rect.left,
+          top: rect.top,
+          width: rect.width,
+          height: rect.height,
+          right: rect.right,
+          bottom: rect.bottom,
+        };
+      });
+    };
+
+    observer = new ResizeObserver(measure);
+    const workbench = document.querySelector('.monaco-workbench');
+    if (workbench) {
+      observer.observe(workbench);
+    }
+    target = findTarget();
+    if (target) {
+      observer.observe(target);
+    }
+    measure();
+
+    const interval = window.setInterval(measure, 1000);
+    window.addEventListener('resize', measure);
+
+    return () => {
+      disposed = true;
+      observer?.disconnect();
+      window.clearInterval(interval);
+      window.removeEventListener('resize', measure);
+    };
+  }, []);
 
   const persistSettings = useCallback(
     (patch: Partial<SkinSettings>) => {
@@ -416,7 +550,11 @@ export function Hud({ config, videoHost }: HudProps) {
     }
     pendingSeek.current = videoRef.current?.currentTime ?? 0;
     updateSettings({ quality: qn });
-    await load(ref, qn);
+    const next = await load(ref, qn);
+    if (next && next.quality !== qn) {
+      const label = next.qualities.find((quality) => quality.qn === next.quality)?.desc ?? `${next.quality}P`;
+      setNotice(`该清晰度当前不可用，已切换到 ${label}`);
+    }
   };
 
   const switchEpisode = async (index: number) => {
@@ -545,6 +683,11 @@ export function Hud({ config, videoHost }: HudProps) {
   };
 
   const layerStyle = {
+    left: editorBounds ? `${editorBounds.left}px` : '0px',
+    top: editorBounds ? `${editorBounds.top}px` : '0px',
+    width: editorBounds ? `${editorBounds.width}px` : '0px',
+    height: editorBounds ? `${editorBounds.height}px` : '0px',
+    visibility: editorBounds ? 'visible' : 'hidden',
     '--bili-opacity': settings.opacity,
     '--bili-blur': `${settings.blur}px`,
     '--bili-dim': settings.dim,
@@ -579,11 +722,39 @@ export function Hud({ config, videoHost }: HudProps) {
           muted={muted}
           playsInline
           preload="auto"
-          onLoadedMetadata={(event) => setDuration(event.currentTarget.duration || 0)}
-          onTimeUpdate={(event) => setCurrentTime(event.currentTarget.currentTime)}
-          onPlay={() => setPlaying(true)}
-          onPause={() => setPlaying(false)}
+          onLoadedMetadata={(event) => {
+            setDuration(event.currentTarget.duration || 0);
+            syncAudio(true);
+          }}
+          onTimeUpdate={(event) => {
+            setCurrentTime(event.currentTarget.currentTime);
+            if (!event.currentTarget.paused) {
+              syncAudio();
+            }
+          }}
+          onPlay={() => {
+            setPlaying(true);
+            syncAudio(true);
+          }}
+          onPause={() => {
+            setPlaying(false);
+            audioRef.current?.pause();
+          }}
+          onSeeking={() => syncAudio(true)}
+          onEnded={() => audioRef.current?.pause()}
           onError={handleVideoError}
+        />
+      ) : null}
+      {audioSrc ? (
+        <audio
+          ref={audioRef}
+          src={audioSrc}
+          muted={muted}
+          preload="auto"
+          style={{ display: 'none' }}
+          onLoadedMetadata={() => syncAudio(true)}
+          onCanPlay={() => syncAudio(true)}
+          onError={() => undefined}
         />
       ) : null}
       <div className="bili-dim" />
@@ -827,6 +998,12 @@ export function Hud({ config, videoHost }: HudProps) {
                   <button type="button" className="bp-text-red-200 bp-underline" onClick={retry}>
                     重试
                   </button>
+                </div>
+              ) : null}
+
+              {notice ? (
+                <div className="bp-rounded-lg bp-bg-amber-500/10 bp-px-2 bp-py-1.5 bp-text-[11px] bp-text-amber-300">
+                  {notice}
                 </div>
               ) : null}
 

@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.3.0
+
+- 1080P/1080P+：qnl > 720P 时自动请求 DASH，视频轨 + 独立 AAC 音轨同步播放；720P 及以下继续用 mp4 durl
+- 清晰度选择失败时显示“已回落”提示，不再静默跳回 720P
+- 视频层只铺编辑器内容区域，随侧边栏/终端/聊天栏大小变化；HUD 同步贴到编辑区右下角
+- 非编辑区恢复原生不透明背景，不再透出视频
+- 放宽 media-src 到 `https:` 以支持 B 站 DASH 的多个 CDN 域名
+
 ## 0.2.2
 
 - 修复 VS Code `require-trusted-types-for 'script'` 下 HUD 空白：移除 Radix Select Viewport 注入的 `<style dangerouslySetInnerHTML>`，改用普通滚动容器

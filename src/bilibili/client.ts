@@ -53,6 +53,34 @@ export interface PlayurlData {
   durl?: DurlSegment[];
 }
 
+export interface DashStream {
+  id: number;
+  baseUrl: string;
+  base_url?: string;
+  backupUrl?: string[];
+  backup_url?: string[];
+  bandwidth: number;
+  mimeType: string;
+  codecs: string;
+  codecid: number;
+  width?: number;
+  height?: number;
+  SegmentBase?: { Initialization?: string; indexRange?: string };
+}
+
+export interface DashData {
+  duration: number;
+  video: DashStream[];
+  audio: DashStream[];
+}
+
+export interface PlayurlDashData {
+  dash?: DashData;
+  timelength?: number;
+  accept_quality?: number[];
+  accept_description?: string[];
+}
+
 export interface NavData {
   isLogin: boolean;
   mid?: number;
@@ -97,6 +125,19 @@ export class BiliClient {
       high_quality: '1',
     });
     return this.get<PlayurlData>(`https://api.bilibili.com/x/player/playurl?${params.toString()}`);
+  }
+
+  async dashPlayurl(bvid: string, cid: number, qn: number): Promise<PlayurlDashData> {
+    const params = new URLSearchParams({
+      bvid,
+      cid: String(cid),
+      qn: String(qn),
+      fnval: '16',
+      fnver: '0',
+      fourk: '1',
+      platform: 'pc',
+    });
+    return this.get<PlayurlDashData>(`https://api.bilibili.com/x/player/playurl?${params.toString()}`);
   }
 
   async nav(): Promise<NavData> {

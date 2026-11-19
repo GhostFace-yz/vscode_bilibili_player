@@ -370,7 +370,6 @@
 
 #bili-skin-video-layer {
   position: fixed;
-  inset: 0;
   z-index: -1;
   overflow: hidden;
   pointer-events: none;
@@ -415,18 +414,6 @@ body.bili-skin-on .monaco-workbench .monaco-editor,
 body.bili-skin-on .monaco-workbench .monaco-editor .monaco-editor-background,
 body.bili-skin-on .monaco-workbench .monaco-editor .margin {
   background-color: transparent !important;
-}
-
-body.bili-skin-on .monaco-workbench .part.sidebar,
-body.bili-skin-on .monaco-workbench .part.auxiliarybar,
-body.bili-skin-on .monaco-workbench .part.activitybar,
-body.bili-skin-on .monaco-workbench .part.panel,
-body.bili-skin-on .monaco-workbench .part.statusbar,
-body.bili-skin-on .monaco-workbench .part.titlebar,
-body.bili-skin-on .monaco-workbench .tabs-and-actions-container,
-body.bili-skin-on .monaco-workbench .breadcrumbs-control {
-  background-color: rgba(20, 20, 24, 0.55) !important;
-  background-color: color-mix(in srgb, var(--vscode-editor-background, #1e1e1e) 60%, transparent) !important;
 }
 
 body.bili-skin-on .monaco-workbench .terminal-wrapper,

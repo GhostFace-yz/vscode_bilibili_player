@@ -70,6 +70,10 @@ export interface PlayInfo {
   qualities: QualityOption[];
   url: string;
   backupUrls: string[];
+  /** DASH 模式下单独的音轨；native 模式为空 */
+  audioUrl?: string;
+  audioBackupUrls?: string[];
+  mode: 'native' | 'dash';
   episodes: EpisodeInfo[];
   episodeIndex: number;
 }
