@@ -1,0 +1,151 @@
+{
+  "name": "vscode-bilibili-player",
+  "displayName": "Bilibili 视频皮肤",
+  "description": "把 B 站视频铺在 VS Code 工作台背景层播放，边写代码边看视频。",
+  "version": "0.0.1",
+  "publisher": "GhostFace-yz",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/GhostFace-yz/vscode_bilibili_player.git"
+  },
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "keywords": [
+    "bilibili",
+    "video",
+    "background",
+    "skin",
+    "player",
+    "哔哩哔哩"
+  ],
+  "main": "./dist/extension.js",
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "contributes": {
+    "commands": [
+      {
+        "command": "bilibiliPlayer.play",
+        "title": "B站皮肤: 播放视频…",
+        "category": "Bilibili Player"
+      },
+      {
+        "command": "bilibiliPlayer.openPlayerPanel",
+        "title": "B站皮肤: 在编辑器区域打开播放器(安全模式)",
+        "category": "Bilibili Player"
+      }
+    ],
+    "keybindings": [
+      {
+        "command": "bilibiliPlayer.play",
+        "key": "ctrl+alt+b",
+        "mac": "cmd+alt+b"
+      }
+    ],
+    "configuration": {
+      "title": "Bilibili 视频皮肤",
+      "properties": {
+        "bilibiliPlayer.defaultVideo": {
+          "type": "string",
+          "default": "",
+          "description": "默认播放的视频：BV 号、av 号或 B 站视频链接。",
+          "order": 1
+        },
+        "bilibiliPlayer.opacity": {
+          "type": "number",
+          "default": 0.35,
+          "minimum": 0.05,
+          "maximum": 1,
+          "description": "视频层不透明度。仅用于皮肤模式。",
+          "order": 2
+        },
+        "bilibiliPlayer.blur": {
+          "type": "number",
+          "default": 0,
+          "minimum": 0,
+          "maximum": 40,
+          "description": "视频层模糊半径（px）。仅用于皮肤模式。",
+          "order": 3
+        },
+        "bilibiliPlayer.fit": {
+          "type": "string",
+          "enum": [
+            "cover",
+            "contain",
+            "fill"
+          ],
+          "default": "cover",
+          "description": "视频铺满屏幕的方式。",
+          "order": 4
+        },
+        "bilibiliPlayer.muted": {
+          "type": "boolean",
+          "default": true,
+          "description": "静音播放。",
+          "order": 5
+        },
+        "bilibiliPlayer.autoplay": {
+          "type": "boolean",
+          "default": true,
+          "description": "打开后自动播放。",
+          "order": 6
+        },
+        "bilibiliPlayer.danmaku": {
+          "type": "boolean",
+          "default": false,
+          "description": "显示弹幕（仅官方 iframe 播放器支持）。",
+          "order": 7
+        },
+        "bilibiliPlayer.quality": {
+          "type": "number",
+          "default": 80,
+          "enum": [
+            16,
+            32,
+            64,
+            74,
+            80,
+            112,
+            116,
+            120
+          ],
+          "enumDescriptions": [
+            "360P",
+            "480P",
+            "720P",
+            "720P60",
+            "1080P",
+            "1080P+",
+            "1080P60",
+            "4K"
+          ],
+          "description": "期望清晰度（实际可用清晰度取决于账号与视频源）。",
+          "order": 8
+        },
+        "bilibiliPlayer.useIframePlayer": {
+          "type": "boolean",
+          "default": false,
+          "description": "使用 B 站官方 iframe 播放器：兼容性最好，但无法程序化控制播放。",
+          "order": 9
+        }
+      }
+    }
+  },
+  "scripts": {
+    "check": "tsc --noEmit",
+    "compile": "node esbuild.js",
+    "watch": "node esbuild.js --watch",
+    "vscode:prepublish": "node esbuild.js --production"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "@types/vscode": "^1.85.0",
+    "esbuild": "^0.25.0",
+    "typescript": "^5.7.0"
+  }
+}
