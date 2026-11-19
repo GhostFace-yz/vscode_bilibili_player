@@ -21,6 +21,9 @@ npm install
 npm run compile     # 构建扩展 + 皮肤 + Tailwind
 ```
 
+> 需要 Node.js 20+。如果 `npm install` 报 `~/.npm` 权限错误（本机曾出现过），改用项目内缓存：
+> `npm install --cache ./.npm-cache`。
+
 在 VS Code 中打开本目录，按 `F5` 启动扩展开发宿主，然后执行：
 
 1. `B站皮肤: 应用皮肤（注入工作台）` → 选择「应用并重载」
