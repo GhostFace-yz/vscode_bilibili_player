@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.4.11
+
+- 视频层右侧收窄到代码地图（minimap）左缘：读取 `.minimap` 的实际 `getBoundingClientRect()`，取贴着编辑器右缘的最右侧 minimap，把它从 `editorBounds.width` 里扣掉，避免视频盖住代码地图
+- 兼容 minimap 关闭（宽度为 0 时跳过）、minimap 在左侧、分屏等配置；仍由 1s 轮询 + ResizeObserver 跟随布局变化
+
 ## 0.4.10
 
 - 修复音画同步反馈环：`syncAudio` 之前每次 `canplay` 都强制写 `audio.currentTime`，触发 `seek -> canplay -> seek` 死循环，几秒内产生 3 万多次事件并把渲染进程拖死（日志里 `audio canplay` / `audio playing` 刷屏，随后 VS Code 窗口崩溃）

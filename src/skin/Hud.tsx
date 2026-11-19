@@ -840,12 +840,28 @@ export function Hud({ config, videoHost }: HudProps) {
       if (rect.width < 2 || rect.height < 2) {
         return;
       }
+
+      // 右侧代码地图（minimap）会盖在视频上：把视频右边界收窄到 minimap 左缘。
+      // 取最靠右、且贴着编辑器右缘的那一个，兼容分屏和 minimap 在左侧的配置。
+      let right = rect.right;
+      for (const minimap of Array.from(target.querySelectorAll<HTMLElement>('.minimap'))) {
+        const minimapRect = minimap.getBoundingClientRect();
+        if (minimapRect.width < 8 || minimapRect.height < 8) {
+          continue;
+        }
+        if (minimapRect.right < rect.right - 60) {
+          continue;
+        }
+        right = Math.min(right, minimapRect.left);
+      }
+      const width = Math.max(2, right - rect.left);
+
       setEditorBounds((previous) => {
         if (
           previous &&
           Math.abs(previous.left - rect.left) < 0.5 &&
           Math.abs(previous.top - rect.top) < 0.5 &&
-          Math.abs(previous.width - rect.width) < 0.5 &&
+          Math.abs(previous.width - width) < 0.5 &&
           Math.abs(previous.height - rect.height) < 0.5
         ) {
           return previous;
@@ -853,9 +869,9 @@ export function Hud({ config, videoHost }: HudProps) {
         return {
           left: rect.left,
           top: rect.top,
-          width: rect.width,
+          width,
           height: rect.height,
-          right: rect.right,
+          right: rect.left + width,
           bottom: rect.bottom,
         };
       });
