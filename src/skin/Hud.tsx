@@ -2268,22 +2268,19 @@ export function Hud({ config, videoHost }: HudProps) {
                     </>
                   ) : (
                     <>
-                      <input
-                        className="bili-range"
-                        type="range"
+                      <Slider
+                        className="bp-flex-1"
                         min={0}
                         max={Math.max(duration, 0.1)}
                         step={0.1}
-                        value={Math.min(currentTime, duration || 0.1)}
-                        style={rangeFill(currentTime, 0, Math.max(duration, 0.1))}
-                        aria-label="播放进度"
-                        onChange={(event) => {
-                          const next = Number(event.target.value);
+                        value={[Math.min(currentTime, duration || 0.1)]}
+                        onValueChange={([next]) => {
                           setCurrentTime(next);
                           if (videoRef.current) {
                             videoRef.current.currentTime = next;
                           }
                         }}
+                        aria-label="播放进度"
                       />
                       {info ? (
                         <span className="bp-w-[86px] bp-shrink-0 bp-text-right bp-text-[11px] bp-tabular-nums bili-muted">
@@ -2307,16 +2304,14 @@ export function Hud({ config, videoHost }: HudProps) {
                 >
                   <Volume width={15} height={15} />
                 </button>
-                <input
-                  className="bili-range bili-volume-range"
-                  type="range"
+                <Slider
+                  className="bili-volume-slider"
                   min={0}
                   max={1}
-                  step={0.05}
-                  value={muted ? 0 : volume}
-                  style={rangeFill(muted ? 0 : volume, 0, 1)}
+                  step={0.01}
+                  value={[muted ? 0 : volume]}
+                  onValueChange={([next]) => changeVolume(next)}
                   aria-label="音量"
-                  onChange={(event) => changeVolume(Number(event.target.value))}
                 />
                 <div className="bp-ml-auto bp-flex bp-items-center bp-gap-1.5">
                   {!info && !isLive ? (
@@ -2346,6 +2341,22 @@ export function Hud({ config, videoHost }: HudProps) {
                       onClick={toggleMiniEditing}
                     >
                       <PictureInPicture width={13} height={13} />
+                    </button>
+                  ) : null}
+                  {isLive ? (
+                    <button
+                      type="button"
+                      className="bili-icon-btn"
+                      title="刷新直播"
+                      aria-label="刷新直播"
+                      onClick={() =>
+                        void loadLiveInput(
+                          input || String(liveRoom?.roomId ?? ''),
+                          liveRoom?.currentQn,
+                        )
+                      }
+                    >
+                      <Refresh width={13} height={13} />
                     </button>
                   ) : null}
                   {isLive ? (
@@ -2768,6 +2779,19 @@ export function Hud({ config, videoHost }: HudProps) {
               >
                 <Settings width={14} height={14} />
               </button>
+              {isLive ? (
+                <button
+                  type="button"
+                  className="bili-icon-btn"
+                  title="刷新直播"
+                  aria-label="刷新直播"
+                  onClick={() =>
+                    void loadLiveInput(input || String(liveRoom?.roomId ?? ''), liveRoom?.currentQn)
+                  }
+                >
+                  <Refresh width={14} height={14} />
+                </button>
+              ) : null}
               <button
                 type="button"
                 className="bili-icon-btn"
@@ -2903,28 +2927,22 @@ interface SliderRowProps {
 
 function SliderRow({ label, value, min, max, step, display, onChange }: SliderRowProps) {
   return (
-    <label className="bp-flex bp-items-center bp-gap-2.5">
+    <div className="bp-flex bp-items-center bp-gap-2.5">
       <span className="bp-w-[44px] bp-shrink-0 bp-text-[11px] bili-muted">{label}</span>
-      <input
-        className="bili-range bp-flex-1"
-        type="range"
+      <Slider
+        className="bp-flex-1"
         min={min}
         max={max}
         step={step}
-        value={value}
-        style={rangeFill(value, min, max)}
-        onChange={(event) => onChange(Number(event.target.value))}
+        value={[value]}
+        onValueChange={([next]) => onChange(next)}
+        aria-label={label}
       />
       <span className="bp-w-[38px] bp-shrink-0 bp-text-right bp-text-[11px] bp-tabular-nums bili-subtle">
         {display}
       </span>
-    </label>
+    </div>
   );
-}
-
-function rangeFill(value: number, min: number, max: number): CSSProperties {
-  const ratio = max > min ? Math.min(1, Math.max(0, (value - min) / (max - min))) : 0;
-  return { '--bili-range-fill': `${ratio * 100}%` } as CSSProperties;
 }
 
 function formatTime(value: number): string {

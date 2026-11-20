@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.6.5
+
+- 所有进度条统一成 shadcn/Radix `Slider`：设置面板的播放进度、音量、透明度/模糊/暗化（胶囊音量本来就是 Slider），移除原生 `input[type=range]` 和 `rangeFill`
+- 直播模式新增「刷新直播」按钮：面板里在清晰度左侧，宽胶囊里在设置按钮右侧（仅直播模式显示，点播不显示）
+- 迷你胶囊和宽胶囊高度统一为 40px（宽胶囊原来 46，迷你 40×40）
+
 ## 0.6.4
 
 - 修复宽胶囊音量 Tooltip 点不了：`#bili-skin-hud` 是 `pointer-events: none`，Tooltip 又 Portal 在它里面，导致鼠标穿透到编辑器（光标变成文本输入态）；给 `.bili-tooltip` 补上 `pointer-events: auto`，现在可以按住滑杆拖动/点击

@@ -135,6 +135,7 @@ VS Code 自带的 `libffmpeg` 没有 AAC 解码器（只有 mp3 / flac / vorbis 
 
 - 直播流是 HLS，VS Code 自带的 libffmpeg 解不了 AAC，所以由扩展宿主用 ffmpeg 转成 fMP4 渐进流：视频 H.264 直接 copy，音频转 MP3，`<video>` 按无限长流播放，音画同源
 - 直播没有进度条（显示 `LIVE`），隐藏选集；清晰度按直播间支持的 qn 切换（原画/蓝光/超清/高清/流畅），切不到会提示；暂停后继续会跳回最新画面
+- 直播模式下面板和宽胶囊都有「刷新直播」按钮（重新拉流），点播不显示
 - 弹幕：宿主用 B 站弹幕 WebSocket 协议订阅直播间；`getDanmuInfo` 被风控（`-352`）时退回历史弹幕接口，输出面板里会打印原因
 - 输出面板的自动滚动由 `bilibiliPlayer.danmakuAutoScroll` 控制（默认关掉 VS Code 的智能滚动）
 

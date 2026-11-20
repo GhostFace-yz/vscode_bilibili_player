@@ -190,7 +190,8 @@
   width: 400px;
   max-width: calc(100vw - 36px);
   overflow: hidden;
-  padding: 8px 12px;
+  height: 40px;
+  padding: 0 12px;
   transition: width 760ms cubic-bezier(0.22, 1, 0.36, 1), padding 760ms cubic-bezier(0.22, 1, 0.36, 1);
   border: 1px solid var(--bili-border);
   border-radius: 999px;
@@ -213,8 +214,9 @@
 
 /* 第二种收起状态：只留一个播放/暂停按钮，尺寸固定在最右侧 */
 .bili-pill[data-mini='true'] {
-  width: 38px;
-  padding: 5px;
+  width: 40px;
+  height: 40px;
+  padding: 0;
   gap: 0;
 }
 
@@ -323,59 +325,6 @@
     opacity: 1;
     transform: none;
   }
-}
-
-.bili-slider {
-  position: relative;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  touch-action: none;
-  user-select: none;
-}
-
-.bili-slider[data-orientation='vertical'] {
-  flex-direction: column;
-  width: 20px;
-  height: 88px;
-}
-
-.bili-slider-track {
-  position: relative;
-  flex-grow: 1;
-  border-radius: 999px;
-  background: var(--bili-border);
-}
-
-.bili-slider[data-orientation='vertical'] .bili-slider-track {
-  width: 4px;
-}
-
-.bili-slider-range {
-  position: absolute;
-  border-radius: 999px;
-  background: var(--bili-button-bg);
-}
-
-.bili-slider[data-orientation='vertical'] .bili-slider-range {
-  bottom: 0;
-  width: 100%;
-}
-
-.bili-slider-thumb {
-  display: block;
-  width: 12px;
-  height: 12px;
-  border: 2px solid var(--bili-bg);
-  border-radius: 50%;
-  background: var(--bili-button-bg);
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.35);
-}
-
-.bili-slider-thumb:focus-visible {
-  outline: 1px solid var(--vscode-focusBorder, #007fd4);
-  outline-offset: 1px;
 }
 
 /* ---------- shadcn Switch ---------- */
@@ -1082,43 +1031,78 @@
   touch-action: none;
 }
 
-/* ---------- 滑杆 ---------- */
+/* ---------- 滑杆（统一用 Radix Slider） ---------- */
 
-#bili-skin-hud .bili-range {
+.bili-slider {
+  position: relative;
+  display: flex;
+  align-items: center;
   width: 100%;
+  height: 20px;
+  cursor: pointer;
+  touch-action: none;
+  user-select: none;
+}
+
+.bili-slider-track {
+  position: relative;
+  flex-grow: 1;
   height: 4px;
-  margin: 0;
   border-radius: 999px;
-  background: linear-gradient(
-    to right,
-    var(--bili-button-bg) 0%,
-    var(--bili-button-bg) var(--bili-range-fill, 0%),
-    var(--bili-border) var(--bili-range-fill, 0%),
-    var(--bili-border) 100%
-  );
-  outline: none;
-  appearance: none;
-  -webkit-appearance: none;
+  background: var(--bili-border);
 }
 
-#bili-skin-hud .bili-volume-range {
-  flex: 0 0 64px;
-  width: 64px;
+.bili-slider-range {
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 100%;
+  border-radius: 999px;
+  background: var(--bili-button-bg);
 }
 
-#bili-skin-hud .bili-range::-webkit-slider-thumb {
+.bili-slider-thumb {
+  display: block;
   width: 12px;
   height: 12px;
   border: 2px solid var(--bili-bg);
   border-radius: 50%;
   background: var(--bili-button-bg);
-  appearance: none;
-  -webkit-appearance: none;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.35);
+  cursor: grab;
 }
 
-#bili-skin-hud .bili-range:focus-visible {
-  outline: 1px solid var(--bili-accent);
+.bili-slider-thumb:active {
+  cursor: grabbing;
+}
+
+.bili-slider-thumb:focus-visible {
+  outline: 1px solid var(--vscode-focusBorder, #007fd4);
   outline-offset: 2px;
+}
+
+.bili-volume-slider {
+  flex: 0 0 64px;
+  width: 64px;
+}
+
+/* 竖直方向（胶囊音量 Tooltip） */
+.bili-slider[data-orientation='vertical'] {
+  flex-direction: column;
+  width: 20px;
+  height: 88px;
+}
+
+.bili-slider[data-orientation='vertical'] .bili-slider-track {
+  width: 4px;
+  height: auto;
+}
+
+.bili-slider[data-orientation='vertical'] .bili-slider-range {
+  top: auto;
+  bottom: 0;
+  width: 100%;
+  height: auto;
 }
 
 
