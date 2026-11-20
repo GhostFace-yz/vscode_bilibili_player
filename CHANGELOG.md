@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.6.4
+
+- 修复宽胶囊音量 Tooltip 点不了：`#bili-skin-hud` 是 `pointer-events: none`，Tooltip 又 Portal 在它里面，导致鼠标穿透到编辑器（光标变成文本输入态）；给 `.bili-tooltip` 补上 `pointer-events: auto`，现在可以按住滑杆拖动/点击
+- 恢复吸顶滚动（方法栏）的主题背景，之前为了露视频把它做成透明，导致方法栏文字和下面的代码叠在一起
+- HUD 实时监听 `.sticky-widget` 的高度：方法栏出现时视频整体下移同样高度，消失后自动上移恢复（小屏模式的禁入区也同步）
+- 设置页等非代码编辑器保持不透明（`.settings-editor` 系列），不会透出视频
+
 ## 0.6.3
 
 - 修复弹幕输出不自动滚动：弹幕改成一批日志一次 `append`（输出面板只刷一帧），并在第一次输出弹幕时按设置关闭 VS Code 的 `output.smartScroll.enabled`（智能滚动会在点过输出面板后锁住跟随），日志里会注明这次修改；新增设置 `bilibiliPlayer.danmakuAutoScroll`（默认开）

@@ -302,6 +302,7 @@
 
 .bili-tooltip {
   z-index: 2147483001;
+  pointer-events: auto;
   padding: 6px;
   border: 1px solid var(--bili-border);
   border-radius: 10px;
@@ -326,6 +327,7 @@
 
 .bili-slider {
   position: relative;
+  cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1189,20 +1191,20 @@ body.bili-skin-on .monaco-workbench .monaco-editor .margin {
 }
 
 /*
- * 吸顶滚动（sticky scroll）自带一层不透明的 editorStickyScroll 背景，
- * 滚动到函数/方法内部时会在编辑区顶部盖出一条横带（截图红框）。这里统一透明。
+ * 吸顶滚动（sticky scroll / 方法栏）保留主题自带的不透明背景：
+ * 之前为了露出视频把它做透明，结果方法栏文字和下面的代码叠在一起。
+ * 现在改成让视频整体下移，见 HUD 的 stickyHeight。
  */
-body.bili-skin-on .monaco-workbench .monaco-editor .sticky-widget,
-body.bili-skin-on .monaco-workbench .monaco-editor .sticky-widget .sticky-widget-lines-scrollable,
-body.bili-skin-on .monaco-workbench .monaco-editor .sticky-widget .sticky-widget-lines,
-body.bili-skin-on .monaco-workbench .monaco-editor .sticky-widget .sticky-widget-line-numbers,
-body.bili-skin-on .monaco-workbench .monaco-editor .sticky-widget .sticky-line-content,
-body.bili-skin-on .monaco-workbench .monaco-editor .sticky-widget .sticky-line-number,
-body.bili-skin-on .monaco-workbench .monaco-editor .sticky-widget .sticky-line-content:hover {
-  background-color: transparent !important;
-}
 
-body.bili-skin-on .monaco-workbench .monaco-editor .sticky-widget {
-  border-bottom-color: transparent !important;
-  box-shadow: none !important;
+/*
+ * 设置页等“非代码编辑器”不做透明：
+ * 编辑器背景透明是为了透出视频，但设置界面透出视频会看不清。
+ */
+body.bili-skin-on .monaco-workbench .settings-editor,
+body.bili-skin-on .monaco-workbench .settings-editor .settings-body,
+body.bili-skin-on .monaco-workbench .settings-editor .settings-header,
+body.bili-skin-on .monaco-workbench .settings-editor .settings-tree-container,
+body.bili-skin-on .monaco-workbench .settings-editor .monaco-list,
+body.bili-skin-on .monaco-workbench .settings-editor .monaco-scrollable-element {
+  background-color: var(--vscode-editor-background, #1e1e1e) !important;
 }

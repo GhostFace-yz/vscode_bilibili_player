@@ -133,6 +133,7 @@ export function Hud({ config, videoHost }: HudProps) {
     bottom: number;
   } | null>(null);
   const [topInset, setTopInset] = useState(0);
+  const [stickyHeight, setStickyHeight] = useState(0);
   const [minimapWidth, setMinimapWidth] = useState(0);
   const [miniEditing, setMiniEditing] = useState(false);
   const [miniDraft, setMiniDraft] = useState<MiniBoxRect | null>(null);
@@ -1109,6 +1110,8 @@ export function Hud({ config, videoHost }: HudProps) {
     let disposed = false;
     let target: HTMLElement | null = null;
     let observer: ResizeObserver | undefined;
+    let stickyWidget: HTMLElement | null = null;
+    let stickyObserver: ResizeObserver | undefined;
 
     const findTarget = () =>
       document.querySelector<HTMLElement>('.monaco-workbench .part.editor > .content') ??
@@ -1153,6 +1156,22 @@ export function Hud({ config, videoHost }: HudProps) {
       // 至少留一点空隙，别贴着上边缘
       inset = Math.max(inset, 8);
       setTopInset((previous) => (Math.abs(previous - inset) < 0.5 ? previous : Math.round(inset)));
+
+      // 吸顶滚动（方法栏）出现时会盖住视频顶部：实时量它的高度，让视频整体下移
+      if (!stickyWidget || !stickyWidget.isConnected) {
+        stickyWidget = target.querySelector<HTMLElement>('.monaco-editor .sticky-widget');
+        if (stickyWidget) {
+          stickyObserver?.disconnect();
+          stickyObserver = new ResizeObserver(measure);
+          stickyObserver.observe(stickyWidget);
+        }
+      }
+      const stickyRect = stickyWidget?.getBoundingClientRect();
+      const stickyStyle = stickyWidget ? getComputedStyle(stickyWidget) : null;
+      const stickyHidden =
+        !stickyStyle || stickyStyle.display === 'none' || stickyStyle.visibility === 'hidden';
+      const sticky = !stickyHidden && stickyRect && stickyRect.height > 2 ? Math.round(stickyRect.height) : 0;
+      setStickyHeight((previous) => (previous === sticky ? previous : sticky));
 
       // 右侧代码地图（minimap）会盖在视频上：把视频右边界收窄到 minimap 左缘。
       // 取最靠右、且贴着编辑器右缘的那一个，兼容分屏和 minimap 在左侧的配置。
@@ -1211,6 +1230,7 @@ export function Hud({ config, videoHost }: HudProps) {
     return () => {
       disposed = true;
       observer?.disconnect();
+      stickyObserver?.disconnect();
       window.clearInterval(interval);
       window.removeEventListener('resize', measure);
     };
@@ -1847,8 +1867,10 @@ export function Hud({ config, videoHost }: HudProps) {
    * - 顶部让出标签栏/面包屑的高度，横向居中，剩下的区域露出编辑器背景色
    */
   const ratio = contentAspect > 0 ? contentAspect : videoRatio > 0 ? videoRatio : 16 / 9;
+  /** 视频内容区上边界：标签栏/面包屑 + 吸顶方法栏 */
+  const contentTop = topInset + stickyHeight;
   const miniAvailableWidth = editorBounds ? Math.max(2, editorBounds.width) : 0;
-  const miniAvailableHeight = editorBounds ? Math.max(2, editorBounds.height - topInset) : 0;
+  const miniAvailableHeight = editorBounds ? Math.max(2, editorBounds.height - contentTop) : 0;
   /** 预览里要一起画出来的完整编辑区（含 minimap 色块） */
   const miniStageWidth = miniAvailableWidth + minimapWidth;
   const miniStageHeight = editorBounds ? Math.max(2, editorBounds.height) : 0;
@@ -1872,7 +1894,7 @@ export function Hud({ config, videoHost }: HudProps) {
             Math.max(0, miniAvailableWidth - width),
           ),
           y:
-            topInset +
+            contentTop +
             clampNumber(
               settings.miniRect.y * miniAvailableHeight,
               0,
@@ -1913,7 +1935,7 @@ export function Hud({ config, videoHost }: HudProps) {
     }
     return {
       left: Math.max(0, Math.round((availableWidth - width) / 2)),
-      top: Math.round(topInset),
+      top: Math.round(contentTop),
       width: Math.max(2, Math.round(width)),
       height: Math.max(2, Math.round(height)),
     };
@@ -1991,8 +2013,8 @@ export function Hud({ config, videoHost }: HudProps) {
     }
     const dx = (event.clientX - gesture.startX) / gesture.scale;
     const dy = (event.clientY - gesture.startY) / gesture.scale;
-    const minTop = topInset;
-    const maxBottom = topInset + miniAvailableHeight;
+    const minTop = contentTop;
+    const maxBottom = contentTop + miniAvailableHeight;
 
     if (gesture.mode === 'move') {
       const next = {
@@ -2036,7 +2058,7 @@ export function Hud({ config, videoHost }: HudProps) {
     updateSettings({
       miniRect: {
         x: clampNumber(rect.x / miniAvailableWidth, 0, 1),
-        y: clampNumber((rect.y - topInset) / miniAvailableHeight, 0, 1),
+        y: clampNumber((rect.y - contentTop) / miniAvailableHeight, 0, 1),
         w: clampNumber(rect.w / miniAvailableWidth, 0.05, 1),
       } satisfies MiniRect,
     });
@@ -2450,7 +2472,7 @@ export function Hud({ config, videoHost }: HudProps) {
                           >
                             <div
                               className="bili-mini-forbidden bili-mini-forbidden-top"
-                              style={{ height: topInset }}
+                              style={{ height: contentTop }}
                             />
                             <div
                               className="bili-mini-forbidden bili-mini-forbidden-side"
