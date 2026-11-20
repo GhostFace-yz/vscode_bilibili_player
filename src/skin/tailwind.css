@@ -289,6 +289,27 @@
   will-change: transform;
 }
 
+/* 音轨同步中的小胶囊（宽胶囊里显示） */
+.bili-sync-chip {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 5px;
+  height: 18px;
+  padding: 0 7px;
+  border-radius: 999px;
+  background: var(--bili-button-bg);
+  color: var(--bili-button-fg);
+  font-size: 10px;
+  white-space: nowrap;
+}
+
+.bili-spinner-xs {
+  width: 10px;
+  height: 10px;
+  border-width: 1.5px;
+}
+
 /* 直播标识 */
 .bili-live-badge {
   display: inline-flex;

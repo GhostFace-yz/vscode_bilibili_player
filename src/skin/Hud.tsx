@@ -1818,7 +1818,11 @@ export function Hud({ config, videoHost }: HudProps) {
       return;
     }
     const timer = window.setTimeout(() => {
-      toast.loading('正在准备音轨…', { id: 'bili-audio', duration: Infinity });
+      toast.loading('正在同步音频，请稍后…', {
+        id: 'bili-audio',
+        duration: Infinity,
+        description: '首次播放（或切换清晰度/视频）需要把 AAC 音轨转成可播放的 MP3，视频越长等待越久',
+      });
     }, 300);
     return () => window.clearTimeout(timer);
   }, [audioPreparing]);
@@ -2226,7 +2230,9 @@ export function Hud({ config, videoHost }: HudProps) {
                     <>
                       <div className="bp-truncate bp-text-[13px] bp-font-medium">{info.title}</div>
                       <div className="bp-truncate bp-text-[11px] bili-muted">
-                        {`${info.owner} · ${qualityLabel}${episodeLabel ? ` · ${episodeLabel}` : ''} · ${formatTime(currentTime)} / ${formatTime(duration)}`}
+                        {`${info.owner} · ${qualityLabel}${episodeLabel ? ` · ${episodeLabel}` : ''}${
+                          audioPreparing ? ' · 正在同步音频…' : ` · ${formatTime(currentTime)} / ${formatTime(duration)}`
+                        }`}
                       </div>
                     </>
                   ) : (
@@ -2769,6 +2775,12 @@ export function Hud({ config, videoHost }: HudProps) {
               ) : (
                 volumeTrigger
               )}
+              {audioPreparing ? (
+                <span className="bili-sync-chip" title="正在把音轨转成可播放的格式">
+                  <span className="bili-spinner bili-spinner-xs" />
+                  同步音频
+                </span>
+              ) : null}
               <span
                 ref={pillTitleWrapRef}
                 className="bili-pill-title bp-min-w-0 bp-flex-1 bp-text-[12px] bili-text"

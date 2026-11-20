@@ -346,6 +346,8 @@ async function serveTranscodedAudio(
     sendJson(res, 502, { error: `音轨转码失败：${message}` });
     return;
   }
+  // 切换视频/清晰度后只保留当前音轨，旧视频的缓存直接删掉
+  pruneAudioCache(deps.cacheDir, deps.audioCacheMaxBytes ?? 120 * 1024 * 1024, 1, file);
   await serveFile(req, res, file, transcoder.contentType);
 }
 

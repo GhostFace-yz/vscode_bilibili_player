@@ -13,7 +13,13 @@ const CACHE_EXTENSIONS = ['.mp3', '.wav'];
  * - 永远保留最新的一个文件（哪怕它自己就超限），避免正在播的视频被删
  * - 顺手清掉转码中断留下的 .source.m4s / .tmp 碎片
  */
-export function pruneAudioCache(dir: string, maxBytes: number, keepAtLeast = 1): AudioCacheStats {
+export function pruneAudioCache(
+  dir: string,
+  maxBytes: number,
+  keepAtLeast = 1,
+  /** 指定后：除它以外的缓存文件都删掉（切换视频时用） */
+  keepFile?: string,
+): AudioCacheStats {
   try {
     const entries = fs.readdirSync(dir);
     const files = entries
@@ -38,6 +44,26 @@ export function pruneAudioCache(dir: string, maxBytes: number, keepAtLeast = 1):
 
     let total = files.reduce((sum, entry) => sum + entry.size, 0);
     const limit = Math.max(0, maxBytes);
+    const now = Date.now();
+
+    if (keepFile) {
+      // 切换视频：除了当前这条音轨，其它都删掉。
+      // 20 秒内刚改过的文件可能是另一个窗口正在转码/播放的，先跳过。
+      for (const entry of [...files]) {
+        if (entry.file === keepFile || now - entry.time < 20_000) {
+          continue;
+        }
+        try {
+          fs.rmSync(entry.file, { force: true });
+          total -= entry.size;
+          files.splice(files.indexOf(entry), 1);
+        } catch {
+          // 文件被占用（Windows）时留到下一次清理
+        }
+      }
+      return { files: files.length, bytes: total };
+    }
+
     for (let index = files.length - 1; index >= 0; index -= 1) {
       // index 0 是最新的文件：至少要保留它（keepAtLeast 默认 1）
       if (total <= limit || index < keepAtLeast) {
