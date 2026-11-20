@@ -15,7 +15,7 @@ import { pruneAudioCache } from './server/audioCache';
 import { renderSkinConfig, type DanmakuItem, type SkinConfig } from './shared/types';
 import { ExtensionState } from './state';
 import { findChecksumMismatches, fixChecksums } from './workbench/checksums';
-import { locateWorkbench } from './workbench/locate';
+import { locateWorkbench, type WorkbenchInstall } from './workbench/locate';
 import { applyPatch, isPatched, restorePatch, writeSkinConfig } from './workbench/patcher';
 
 const TOKEN_KEY = 'bilibiliPlayer.apiToken';
@@ -250,11 +250,48 @@ async function syncSkinConfig(context: vscode.ExtensionContext, started: Service
     return;
   }
 
+  const config = skinConfigFor(context, started);
   try {
-    writeSkinConfig(install, renderSkinConfig(skinConfigFor(context, started)));
-    log('已同步皮肤配置（端口/令牌）。', '皮肤');
+    const current = readSkinConfigFile(install);
+    const changed =
+      !current ||
+      current.token !== config.token ||
+      current.port !== config.port ||
+      current.version !== config.version;
+
+    if (!changed) {
+      writeSkinConfig(install, renderSkinConfig(config));
+      return;
+    }
+
+    // 版本/端口/令牌变了：重新注入一遍（同时换掉 ?v= 缓存键，避免渲染进程读到旧资源）
+    applyPatch(install, readSkinAssets(context, config), {
+      backupRoot: path.join(context.globalStorageUri.fsPath, 'workbench-backups'),
+      cacheKey: String(Date.now()),
+      log,
+    });
+    log('皮肤资源已更新（版本/端口/令牌变化），重载窗口后生效。', '皮肤');
+    void vscode.window
+      .showInformationMessage('B站皮肤已随扩展更新，需要重载窗口生效。', '重载窗口')
+      .then((choice) => {
+        if (choice) {
+          void vscode.commands.executeCommand('workbench.action.reloadWindow');
+        }
+      });
   } catch (error) {
     log(`同步皮肤配置失败：${toMessage(error)}`, '错误');
+  }
+}
+
+/** 读取工作台目录里现有的皮肤配置（判断是否需要重新注入）。 */
+function readSkinConfigFile(install: WorkbenchInstall): SkinConfig | null {
+  try {
+    const file = path.join(path.dirname(install.htmlPath), 'bilibili-skin.config.js');
+    const raw = fs.readFileSync(file, 'utf8');
+    const match = raw.match(/window\.__BILI_SKIN_CONFIG__\s*=\s*(\{[\s\S]*\});/);
+    return match ? (JSON.parse(match[1]) as SkinConfig) : null;
+  } catch {
+    return null;
   }
 }
 

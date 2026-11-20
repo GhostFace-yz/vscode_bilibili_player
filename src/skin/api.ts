@@ -41,7 +41,7 @@ export class SkinApi {
   private preferredPort: number;
   private readonly verifiedPorts = new Set<number>();
 
-  constructor(private readonly config: SkinConfig) {
+  constructor(private config: SkinConfig) {
     this.preferredPort = config.port;
   }
 
@@ -172,8 +172,25 @@ export class SkinApi {
   }
 
   private async request<T>(path: string, init: RequestInit = {}): Promise<T> {
+    try {
+      return await this.requestOnce<T>(path, init);
+    } catch (error) {
+      // 扩展换了 publisher/重装后会重新生成令牌，页面里还是旧配置：
+      // 这里重新拉一次 bilibili-skin.config.js（带 cache buster），自愈，不用重载窗口。
+      if ((error as ApiError).status !== 401) {
+        throw error;
+      }
+      if (!(await this.refreshToken())) {
+        throw error;
+      }
+      return this.requestOnce<T>(path, init);
+    }
+  }
+
+  private async requestOnce<T>(path: string, init: RequestInit = {}): Promise<T> {
     const ports = [this.preferredPort, ...PORT_RANGE.filter((port) => port !== this.preferredPort)];
     let lastError: unknown;
+    let authFailed = false;
 
     for (const port of ports) {
       if (!(await this.isCompatible(port))) {
@@ -186,7 +203,12 @@ export class SkinApi {
       } catch (error) {
         lastError = error;
         const status = (error as ApiError).status;
-        if (status === 401 || status === 404) {
+        if (status === 401) {
+          authFailed = true;
+          this.verifiedPorts.delete(port);
+          continue;
+        }
+        if (status === 404) {
           this.verifiedPorts.delete(port);
           continue;
         }
@@ -196,9 +218,44 @@ export class SkinApi {
       }
     }
 
+    if (authFailed) {
+      const error: ApiError = new Error('本地访问令牌已失效');
+      error.status = 401;
+      throw error;
+    }
+
     throw new Error(
       lastError instanceof Error ? `本地服务未响应：${lastError.message}` : '本地服务未启动',
     );
+  }
+
+  /** 重新读取工作台目录里的配置（带 cache buster），拿到扩展最新写入的端口/令牌。 */
+  private async refreshToken(): Promise<boolean> {
+    try {
+      const response = await fetch(`./bilibili-skin.config.js?t=${Date.now()}`, {
+        cache: 'no-store',
+      });
+      if (!response.ok) {
+        return false;
+      }
+      const text = await response.text();
+      const match = /window\.__BILI_SKIN_CONFIG__\s*=\s*(\{[\s\S]*\});/.exec(text);
+      if (!match) {
+        return false;
+      }
+      const config = JSON.parse(match[1]) as SkinConfig;
+      if (!config?.token) {
+        return false;
+      }
+      this.config = { ...this.config, ...config };
+      if (typeof config.port === 'number' && config.port > 0) {
+        this.preferredPort = config.port;
+      }
+      this.verifiedPorts.clear();
+      return true;
+    } catch {
+      return false;
+    }
   }
 
   /** 只连接 0.2+ 的本地 API，避免多窗口升级期间连到旧版服务。 */
