@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.7.0
+
+- logo 换成 `src/asset/files/` 下的新图：HUD 面板/输出、扩展图标（`media/logo.png`）、直播模式左上角统一用 logo（不再显示直播间封面）
+- 命令精简为三条：`B站皮肤: 开启`、`B站皮肤: 关闭（还原工作台）`、`B站皮肤: 打开控制台`；删除播放视频、扫码登录、应用/还原、修复校验和、显示日志、安全模式等命令，以及安全模式的 Webview 播放器代码
+- 快捷键：`Cmd/Ctrl+Alt+B` 开启，`Cmd/Ctrl+Alt+Shift+B` 关闭（还原）
+- README 重写为「下载 / 安装依赖 / 启动 / 功能」四部分，拆成两份：`README.md`（GitHub）和 `README.marketplace.md`（VS Code 应用商店）
+- 新增 `pnpm run vsix:store`：临时把商店版 README 换成 `README.md` 再打包，结束后自动还原（finally 保证）
+
 ## 0.6.8
 
 - Windows 适配：

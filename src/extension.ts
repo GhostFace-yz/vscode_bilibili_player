@@ -6,7 +6,7 @@ import { BiliAuth, type SecretStore } from './bilibili/auth';
 import { fetchDanmaku } from './bilibili/danmaku';
 import { fetchLiveDanmaku, fetchLiveRoom } from './server/live';
 import { LiveDanmakuHub } from './server/liveDanmaku';
-import { parseVideoInput, describeVideo } from './bilibili/parse';
+import { describeVideo } from './bilibili/parse';
 import { getPlayInfo } from './bilibili/playurl';
 import { getSettings, migrateLegacyFitSetting } from './config';
 import { findAudioTranscoder } from './server/audioTranscode';
@@ -16,7 +16,6 @@ import { ExtensionState } from './state';
 import { findChecksumMismatches, fixChecksums } from './workbench/checksums';
 import { locateWorkbench } from './workbench/locate';
 import { applyPatch, isPatched, restorePatch, writeSkinConfig } from './workbench/patcher';
-import { openPlayerPanel } from './webview/playerPanel';
 
 const TOKEN_KEY = 'bilibiliPlayer.apiToken';
 const SKIN_VERSION_KEY = 'bilibiliPlayer.skinVersion';
@@ -39,20 +38,15 @@ export function activate(context: vscode.ExtensionContext): void {
 
   statusBar = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 100);
   statusBar.text = '$(device-camera-video) B站';
-  statusBar.tooltip = 'B站视频皮肤：点击显示/隐藏（Cmd/Ctrl+Alt+B）';
-  statusBar.command = 'bilibiliPlayer.toggle';
+  statusBar.tooltip = 'B站视频皮肤：点击开启';
+  statusBar.command = 'bilibiliPlayer.enable';
   statusBar.show();
   context.subscriptions.push(statusBar);
 
   context.subscriptions.push(
-    vscode.commands.registerCommand('bilibiliPlayer.play', () => runPlay(context)),
-    vscode.commands.registerCommand('bilibiliPlayer.openPlayerPanel', () => runOpenPanel(context)),
-    vscode.commands.registerCommand('bilibiliPlayer.toggle', () => runToggle()),
-    vscode.commands.registerCommand('bilibiliPlayer.login', () => runLogin()),
-    vscode.commands.registerCommand('bilibiliPlayer.applySkin', () => runApply(context)),
-    vscode.commands.registerCommand('bilibiliPlayer.restoreSkin', () => runRestore()),
-    vscode.commands.registerCommand('bilibiliPlayer.fixChecksums', () => runFixChecksums()),
-    vscode.commands.registerCommand('bilibiliPlayer.showLog', () => output.show(true)),
+    vscode.commands.registerCommand('bilibiliPlayer.enable', () => runEnable(context)),
+    vscode.commands.registerCommand('bilibiliPlayer.disable', () => runDisable()),
+    vscode.commands.registerCommand('bilibiliPlayer.showOutput', () => output.show(true)),
   );
 
   void migrateLegacyFitSetting().catch(() => undefined);
@@ -268,122 +262,39 @@ function updateStatusBar(started: Services): void {
 
   if (started.auth.loggedIn && started.auth.user) {
     statusBar.text = '$(device-camera-video) B站';
-    statusBar.tooltip = `B站视频皮肤 · 已登录：${started.auth.user.name} · Cmd/Ctrl+Alt+B 显示/隐藏`;
+    statusBar.tooltip = `B站视频皮肤 · 已登录：${started.auth.user.name}`;
   } else {
     statusBar.text = '$(device-camera-video) B站';
-    statusBar.tooltip = 'B站视频皮肤 · 未登录（可播放 480P/720P） · Cmd/Ctrl+Alt+B 显示/隐藏';
+    statusBar.tooltip = 'B站视频皮肤 · 未登录（可播放 480P/720P）';
   }
 }
 
-async function runPlay(context: vscode.ExtensionContext): Promise<void> {
-  const settings = getSettings();
-  const input = await vscode.window.showInputBox({
-    title: '播放 B 站视频',
-    prompt: '输入 BV 号、av 号或视频链接，例如 BV1GJ411x7h7',
-    value: settings.defaultVideo,
-    ignoreFocusOut: true,
-    validateInput: (value) => (parseVideoInput(value) ? undefined : '无法识别的 BV 号 / av 号 / 链接'),
-  });
-  if (!input) {
-    return;
-  }
-
-  const ref = parseVideoInput(input);
-  if (!ref) {
-    return;
-  }
-
+/**
+ * 开启：没注入过就先注入，已注入则只是把皮肤显示出来。
+ */
+async function runEnable(context: vscode.ExtensionContext): Promise<void> {
   try {
-    const started = await requireServices();
-    await started.state.patch({
-      video: { bvid: ref.bvid, aid: ref.aid, page: ref.page },
-      visible: true,
-    });
-    await context.globalState.update('bilibiliPlayer.lastVideo', input.trim());
-
     const install = locateWorkbench(vscode.env.appRoot, vscode.version);
-    if (install && isPatched(install)) {
-      void vscode.window.showInformationMessage(`已在皮肤中播放：${describeVideo(ref)}`);
-    } else {
-      openPlayerPanel(ref, getSettings());
-      void vscode.window
-        .showInformationMessage('皮肤模式尚未应用，已使用安全模式播放。', '应用皮肤')
-        .then((choice) => {
-          if (choice === '应用皮肤') {
-            void vscode.commands.executeCommand('bilibiliPlayer.applySkin');
-          }
-        });
+    if (!install) {
+      throw new Error('未找到 VS Code 的 workbench.html，请确认使用的是桌面版 VS Code');
     }
-  } catch (error) {
-    reportError(error);
-  }
-}
 
-async function runOpenPanel(context: vscode.ExtensionContext): Promise<void> {
-  try {
-    const started = await requireServices();
-    const settings = getSettings();
-    const source = settings.defaultVideo || context.globalState.get<string>('bilibiliPlayer.lastVideo') || '';
-    const ref = source ? parseVideoInput(source) : undefined;
-
-    if (!ref) {
-      await vscode.commands.executeCommand('bilibiliPlayer.play');
+    if (!isPatched(install)) {
+      await runApply(context);
       return;
     }
 
-    await started.state.patch({
-      video: { bvid: ref.bvid, aid: ref.aid, page: ref.page },
-      visible: true,
-    });
-    openPlayerPanel(ref, settings);
+    const started = await requireServices();
+    await started.state.patch({ visible: true });
+    void vscode.window.showInformationMessage('B站皮肤已开启：右下角 HUD 可播放视频（若没出现请重载窗口）。');
   } catch (error) {
     reportError(error);
   }
 }
 
-async function runToggle(): Promise<void> {
-  try {
-    const started = await requireServices();
-    const install = locateWorkbench(vscode.env.appRoot, vscode.version);
-
-    if (!install || !isPatched(install)) {
-      const choice = await vscode.window.showInformationMessage(
-        '皮肤模式尚未应用：需要把播放器注入工作台背景层。',
-        '应用皮肤',
-      );
-      if (choice) {
-        await vscode.commands.executeCommand('bilibiliPlayer.applySkin');
-      }
-      return;
-    }
-
-    const current = await started.state.snapshot(false);
-    await started.state.patch({ visible: !current.visible });
-  } catch (error) {
-    reportError(error);
-  }
-}
-
-async function runLogin(): Promise<void> {
-  try {
-    const started = await requireServices();
-    const install = locateWorkbench(vscode.env.appRoot, vscode.version);
-
-    if (!install || !isPatched(install)) {
-      const choice = await vscode.window.showInformationMessage(
-        '扫码登录在皮肤 HUD 中进行；请先应用皮肤模式。',
-        '应用皮肤',
-      );
-      if (choice) {
-        await vscode.commands.executeCommand('bilibiliPlayer.applySkin');
-      }
-      return;
-    }
-
-    await started.state.patch({ visible: true, openLogin: true });
-  } catch (error) {
-    reportError(error);
-  }
+/** 关闭（还原）：移除注入、恢复 CSP 与校验和。 */
+async function runDisable(): Promise<void> {
+  await runRestore();
 }
 
 async function runApply(context: vscode.ExtensionContext): Promise<void> {
@@ -486,51 +397,6 @@ async function runRestore(): Promise<void> {
       await vscode.commands.executeCommand('workbench.action.reloadWindow');
     } else {
       void vscode.window.showInformationMessage('已还原，重载窗口后生效。');
-    }
-  } catch (error) {
-    reportError(error);
-  }
-}
-
-async function runFixChecksums(): Promise<void> {
-  try {
-    const install = locateWorkbench(vscode.env.appRoot, vscode.version);
-    if (!install) {
-      throw new Error('未找到 VS Code 工作台文件');
-    }
-
-    const mismatches = findChecksumMismatches(install.appRoot, install.productJsonPath);
-    if (mismatches.length === 0) {
-      void vscode.window.showInformationMessage('所有校验和均匹配，无需修复。');
-      return;
-    }
-
-    const list = mismatches
-      .slice(0, 8)
-      .map((mismatch) => `• ${mismatch.key}`)
-      .join('\n');
-    const detail =
-      `${list}${mismatches.length > 8 ? `\n… 共 ${mismatches.length} 个文件` : ''}\n\n` +
-      '这通常来自其它工具对 VS Code 安装目录的修改。修复会以当前文件为准重算 product.json 中的校验和，' +
-      '只用于消除“安装已损坏”提示，不会改动任何代码文件；VS Code 升级后可能需要重新修复。';
-
-    const answer = await vscode.window.showWarningMessage(
-      `检测到 ${mismatches.length} 个文件与 product.json 校验和不一致`,
-      { modal: true, detail },
-      '修复并重载',
-      '仅修复',
-    );
-    if (!answer) {
-      return;
-    }
-
-    const fixed = fixChecksums(install.appRoot, install.productJsonPath, log);
-    log(`已修复 ${fixed.length} 个校验和。`, '皮肤');
-
-    if (answer === '修复并重载') {
-      await vscode.commands.executeCommand('workbench.action.reloadWindow');
-    } else {
-      void vscode.window.showInformationMessage(`已修复 ${fixed.length} 个文件的校验和，重载窗口后生效。`);
     }
   } catch (error) {
     reportError(error);

@@ -1,8 +1,8 @@
 {
   "name": "vscode-bilibili-player",
   "displayName": "Bilibili 视频皮肤",
-  "description": "把 B 站视频铺在 VS Code 工作台背景层播放，边写代码边看视频。",
-  "version": "0.6.8",
+  "description": "把 B 站视频铺在 VS Code 编辑区背景层播放，边写代码边看视频（支持直播、弹幕、小屏模式）。",
+  "version": "0.7.0",
   "packageManager": "pnpm@10.32.1",
   "icon": "media/logo.png",
   "publisher": "GhostFace-yz",
@@ -32,54 +32,29 @@
   "contributes": {
     "commands": [
       {
-        "command": "bilibiliPlayer.play",
-        "title": "B站皮肤: 播放视频…",
-        "category": "Bilibili Player"
+        "command": "bilibiliPlayer.enable",
+        "title": "开启",
+        "category": "B站皮肤"
       },
       {
-        "command": "bilibiliPlayer.toggle",
-        "title": "B站皮肤: 显示/隐藏皮肤",
-        "category": "Bilibili Player"
+        "command": "bilibiliPlayer.disable",
+        "title": "关闭（还原工作台）",
+        "category": "B站皮肤"
       },
       {
-        "command": "bilibiliPlayer.login",
-        "title": "B站皮肤: 扫码登录",
-        "category": "Bilibili Player"
-      },
-      {
-        "command": "bilibiliPlayer.applySkin",
-        "title": "B站皮肤: 应用皮肤（注入工作台）",
-        "category": "Bilibili Player"
-      },
-      {
-        "command": "bilibiliPlayer.restoreSkin",
-        "title": "B站皮肤: 还原工作台",
-        "category": "Bilibili Player"
-      },
-      {
-        "command": "bilibiliPlayer.fixChecksums",
-        "title": "B站皮肤: 修复校验和（消除安装损坏提示）",
-        "category": "Bilibili Player"
-      },
-      {
-        "command": "bilibiliPlayer.openPlayerPanel",
-        "title": "B站皮肤: 在编辑器区域打开播放器(安全模式)",
-        "category": "Bilibili Player"
-      },
-      {
-        "command": "bilibiliPlayer.showLog",
-        "title": "B站皮肤: 显示日志",
-        "category": "Bilibili Player"
+        "command": "bilibiliPlayer.showOutput",
+        "title": "打开控制台",
+        "category": "B站皮肤"
       }
     ],
     "keybindings": [
       {
-        "command": "bilibiliPlayer.toggle",
+        "command": "bilibiliPlayer.enable",
         "key": "ctrl+alt+b",
         "mac": "cmd+alt+b"
       },
       {
-        "command": "bilibiliPlayer.play",
+        "command": "bilibiliPlayer.disable",
         "key": "ctrl+alt+shift+b",
         "mac": "cmd+alt+shift+b"
       }
@@ -233,7 +208,8 @@
     "dev:server": "esbuild scripts/dev-server.ts --bundle --platform=node --format=cjs --outfile=dist/dev-server.cjs --target=node20 && node dist/dev-server.cjs",
     "package": "node esbuild.js --production && pnpm run build:skin",
     "vsix": "pnpm run package && vsce package --no-dependencies",
-    "vscode:prepublish": "pnpm run package"
+    "vscode:prepublish": "pnpm run package",
+    "vsix:store": "node scripts/pack-store.mjs"
   },
   "pnpm": {
     "onlyBuiltDependencies": [

@@ -2217,7 +2217,7 @@ export function Hud({ config, videoHost }: HudProps) {
                 {info || isLive ? (
                   <img
                     className="bp-h-6 bp-w-6 bp-shrink-0 bp-rounded-md bp-object-cover"
-                    src={isLive ? liveRoom?.cover || logoUrl : logoUrl}
+                    src={logoUrl}
                     alt=""
                     referrerPolicy="no-referrer"
                   />

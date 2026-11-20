@@ -17,3 +17,6 @@ node_modules/**
 **/*.map
 dist/dev-server.cjs
 **/*.ts
+README.marketplace.md
+README.github.backup.md
+scripts/pack-store.mjs
