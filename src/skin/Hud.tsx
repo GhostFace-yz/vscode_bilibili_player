@@ -246,6 +246,9 @@ export function Hud({ config, videoHost }: HudProps) {
   const mediaErrorRef = useRef<string | null>(null);
   const backupIndex = useRef(0);
   const pendingSeek = useRef(0);
+  /** 最近一次切换视频源的时间：切换瞬间的 error 多半是上一个请求被 abort */
+  const srcChangedAt = useRef(0);
+  const errorRetryTimer = useRef<number | undefined>(undefined);
   const initialized = useRef(false);
   const lastAuthRevision = useRef<number | null>(null);
   const saveTimer = useRef<number | undefined>(undefined);
@@ -650,6 +653,8 @@ export function Hud({ config, videoHost }: HudProps) {
 
     applyMediaSettings();
     video.setAttribute('referrerpolicy', 'no-referrer');
+    srcChangedAt.current = Date.now();
+    window.clearTimeout(errorRetryTimer.current);
     video.load();
 
     const seek = pendingSeek.current;
@@ -990,6 +995,7 @@ export function Hud({ config, videoHost }: HudProps) {
   useEffect(() => {
     return () => {
       window.clearTimeout(pillExpandTimer.current);
+      window.clearTimeout(errorRetryTimer.current);
       titleTimeline.current?.kill();
     };
   }, []);
@@ -1704,6 +1710,27 @@ export function Hud({ config, videoHost }: HudProps) {
   );
 
   const handleVideoError = () => {
+    const video = videoRef.current;
+    // 没有 media error 的 error 事件（迟到的 abort、合成事件）直接忽略
+    if (!video || !video.error) {
+      return;
+    }
+
+    // 切换视频/换清晰度时，浏览器会 abort 上一个请求，偶尔补一个迟到的 error。
+    // 这种 error 不该触发“切换备用 CDN → 全部失败 → 报错”的连锁反应：
+    // 先等 1.6s 再确认，如果这期间已经能播（readyState >= 1）就直接忽略。
+    if (video && Date.now() - srcChangedAt.current < 900) {
+      window.clearTimeout(errorRetryTimer.current);
+      errorRetryTimer.current = window.setTimeout(() => {
+        const current = videoRef.current;
+        if (!current || !current.error || current.readyState >= 1) {
+          return;
+        }
+        handleVideoError();
+      }, 1100);
+      return;
+    }
+
     if (isLive) {
       setError('直播流中断，请重新加载直播间');
       toast.error('直播流中断，请重新加载直播间');
