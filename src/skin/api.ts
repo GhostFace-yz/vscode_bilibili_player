@@ -1,6 +1,8 @@
 import { PORT_RANGE } from '../shared/types';
 import type {
   DanmakuItem,
+  LiveDanmakuItem,
+  LiveRoomInfo,
   LoginPoll,
   LoginQr,
   PlayInfo,
@@ -72,13 +74,36 @@ export class SkinApi {
     return this.request<{ ok: boolean; items: DanmakuItem[] }>(`/api/danmaku?cid=${cid}`);
   }
 
-  /** 把到时间的弹幕交给宿主打印到输出面板。 */
-  emitDanmaku(items: DanmakuItem[]): Promise<{ ok: boolean; count: number }> {
+  /** 把到时间的弹幕交给宿主打印到输出面板；live 时按直播格式打印。 */
+  emitDanmaku(items: DanmakuItem[], live = false): Promise<{ ok: boolean; count: number }> {
     return this.request<{ ok: boolean; count: number }>('/api/danmaku/emit', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ items }),
+      body: JSON.stringify({ items, live }),
     });
+  }
+
+  /** 解析直播间链接/房间号，拿到开播状态和上游 HLS 地址。 */
+  liveRoom(input: string): Promise<{ ok: boolean; room?: LiveRoomInfo; error?: string }> {
+    return this.request<{ ok: boolean; room?: LiveRoomInfo; error?: string }>(
+      `/api/live/room?input=${encodeURIComponent(input)}`,
+    );
+  }
+
+  liveDanmaku(roomId: number): Promise<{ ok: boolean; items: LiveDanmakuItem[] }> {
+    return this.request<{ ok: boolean; items: LiveDanmakuItem[] }>(
+      `/api/live/danmaku?room=${roomId}`,
+    );
+  }
+
+  /** 直播走宿主的 ffmpeg 代理：HLS → fMP4（H.264 copy + MP3 音频）。 */
+  liveStreamUrl(upstream: string, transcode: boolean): string {
+    const params = new URLSearchParams({
+      url: upstream,
+      token: this.config.token,
+      transcode: transcode ? '1' : '0',
+    });
+    return `http://127.0.0.1:${this.preferredPort}/api/live/stream?${params.toString()}`;
   }
 
   diagnostics(payload: unknown): Promise<{ ok: boolean }> {

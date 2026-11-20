@@ -2,13 +2,16 @@ import { createHash } from 'node:crypto';
 import * as fs from 'node:fs';
 import * as http from 'node:http';
 import * as path from 'node:path';
+import { spawn } from 'node:child_process';
 import { Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
-import { findAudioTranscoder, type AudioTranscoder } from './audioTranscode';
+import { findAudioTranscoder, findFfmpegBinary, type AudioTranscoder } from './audioTranscode';
 import { detectContentAspect, type ContentAspect } from './contentAspect';
 import { PORT_RANGE } from '../shared/types';
 import type {
   DanmakuItem,
+  LiveDanmakuItem,
+  LiveRoomInfo,
   LoginPoll,
   LoginQr,
   PlayInfo,
@@ -39,7 +42,9 @@ export interface ApiServerDeps {
   patchState(patch: StatePatch): Promise<SkinState>;
   getPlayInfo(ref: VideoRef, qn: number): Promise<PlayInfo>;
   getDanmaku?(cid: number): Promise<DanmakuItem[]>;
-  onDanmaku?(items: DanmakuItem[]): void;
+  onDanmaku?(items: DanmakuItem[], live?: boolean): void;
+  getLiveRoom?(input: string): Promise<LiveRoomInfo>;
+  getLiveDanmaku?(roomId: number): Promise<LiveDanmakuItem[]>;
   loginQr(): Promise<LoginQr>;
   loginPoll(key: string): Promise<LoginPoll>;
   logout(): Promise<void>;
@@ -144,6 +149,52 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
     return;
   }
 
+  if (path === '/api/live/room' && req.method === 'GET') {
+    const input = url.searchParams.get('input') ?? '';
+    if (!deps.getLiveRoom) {
+      sendJson(res, 200, { ok: false, error: '直播功能不可用' });
+      return;
+    }
+    try {
+      const room = await deps.getLiveRoom(input);
+      deps.log?.(`直播间：${room.title}${room.liveStatus === 1 ? `（${room.online} 人气）` : '（未开播）'}`);
+      sendJson(res, 200, { ok: true, room });
+    } catch (error) {
+      sendJson(res, 200, {
+        ok: false,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+    return;
+  }
+
+  if (path === '/api/live/danmaku' && req.method === 'GET') {
+    const roomId = toInt(url.searchParams.get('room'));
+    if (!roomId || !deps.getLiveDanmaku) {
+      sendJson(res, 200, { ok: false, error: '缺少直播间号' });
+      return;
+    }
+    try {
+      sendJson(res, 200, { ok: true, items: await deps.getLiveDanmaku(roomId) });
+    } catch (error) {
+      sendJson(res, 200, {
+        ok: false,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+    return;
+  }
+
+  if (path === '/api/live/stream' && req.method === 'GET') {
+    const upstream = url.searchParams.get('url') ?? '';
+    if (!/^https?:\/\//i.test(upstream)) {
+      sendJson(res, 400, { error: '缺少直播流地址' });
+      return;
+    }
+    await proxyLiveStream(req, res, upstream, url.searchParams.get('transcode') === '1', deps);
+    return;
+  }
+
   if (path === '/api/danmaku' && req.method === 'GET') {
     const cid = toInt(url.searchParams.get('cid'));
     if (!cid) {
@@ -156,10 +207,10 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
   }
 
   if (path === '/api/danmaku/emit' && req.method === 'POST') {
-    const body = await readJson<{ items?: unknown }>(req);
+    const body = await readJson<{ items?: unknown; live?: unknown }>(req);
     const items = normalizeDanmakuItems(body.items);
     if (items.length > 0) {
-      deps.onDanmaku?.(items);
+      deps.onDanmaku?.(items, body.live === true);
     }
     sendJson(res, 200, { ok: true, count: items.length });
     return;
@@ -492,6 +543,7 @@ async function proxyAudio(req: http.IncomingMessage, res: http.ServerResponse, u
 }
 
 function setCorsHeaders(res: http.ServerResponse): void {
+  res.setHeader('Access-Control-Max-Age', '600');
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'content-type, x-bili-token');
@@ -655,4 +707,84 @@ function normalizeDanmakuItems(value: unknown): DanmakuItem[] {
     items.push({ time, text: trimmed.slice(0, 200) });
   }
   return items;
+}
+
+/**
+ * 直播流代理：ffmpeg 把 HLS 转成 fMP4（视频 copy / 音频转 MP3），
+ * 以无限长的渐进流交给 <video>。客户端断开时杀掉 ffmpeg。
+ */
+async function proxyLiveStream(
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+  upstream: string,
+  transcode: boolean,
+  deps: ApiServerDeps,
+): Promise<void> {
+  const bin = findFfmpegBinary();
+  if (!bin) {
+    sendJson(res, 503, { error: '播放直播需要 ffmpeg，请先安装 ffmpeg' });
+    return;
+  }
+
+  res.writeHead(200, {
+    'Content-Type': 'video/mp4',
+    'Cache-Control': 'no-store',
+    'Access-Control-Allow-Origin': '*',
+  });
+
+  const child = spawn(
+    bin,
+    [
+      '-hide_banner',
+      '-loglevel',
+      'error',
+      '-nostdin',
+      '-i',
+      upstream,
+      ...(transcode
+        ? ['-c:v', 'libx264', '-preset', 'veryfast', '-tune', 'zerolatency', '-pix_fmt', 'yuv420p']
+        : ['-c:v', 'copy']),
+      '-c:a',
+      'libmp3lame',
+      '-b:a',
+      '160k',
+      '-ar',
+      '48000',
+      '-movflags',
+      'frag_keyframe+empty_moov+default_base_moof',
+      '-f',
+      'mp4',
+      'pipe:1',
+    ],
+    { stdio: ['ignore', 'pipe', 'pipe'] },
+  );
+
+  let stderr = '';
+  let aborted = false;
+  child.stderr.on('data', (chunk: Buffer) => {
+    stderr = `${stderr}${chunk.toString('utf8')}`.slice(-2000);
+  });
+  child.stdout.pipe(res);
+  child.on('error', (error) => {
+    deps.log?.(`直播转码启动失败：${error.message}`);
+    try {
+      res.destroy();
+    } catch {
+      // 已断开
+    }
+  });
+  child.on('close', (code) => {
+    if (!aborted && code !== 0 && stderr.trim()) {
+      deps.log?.(`直播流中断（ffmpeg ${code}）：${stderr.trim().slice(0, 300)}`);
+    }
+    try {
+      res.end();
+    } catch {
+      // 已断开
+    }
+  });
+  req.on('close', () => {
+    aborted = true;
+    child.kill('SIGKILL');
+  });
 }

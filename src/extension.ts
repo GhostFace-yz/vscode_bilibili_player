@@ -4,6 +4,8 @@ import * as path from 'node:path';
 import * as vscode from 'vscode';
 import { BiliAuth, type SecretStore } from './bilibili/auth';
 import { fetchDanmaku } from './bilibili/danmaku';
+import { fetchLiveDanmaku, fetchLiveRoom } from './server/live';
+import { LiveDanmakuHub } from './server/liveDanmaku';
 import { parseVideoInput, describeVideo } from './bilibili/parse';
 import { getPlayInfo } from './bilibili/playurl';
 import { getSettings, migrateLegacyFitSetting } from './config';
@@ -24,6 +26,7 @@ interface Services {
   state: ExtensionState;
   server: ApiServerHandle;
   token: string;
+  liveDanmaku: LiveDanmakuHub;
 }
 
 let output: vscode.OutputChannel;
@@ -67,6 +70,7 @@ export async function deactivate(): Promise<void> {
   if (services) {
     try {
       const started = await services;
+      started.liveDanmaku.dispose();
       await started.server.close();
     } catch {
       // 初始化失败时没有 server 可关
@@ -106,6 +110,11 @@ async function initServices(context: vscode.ExtensionContext): Promise<Services>
   let apiPort = 0;
   // 弹幕整段拉取一次就够，按 cid 缓存
   const danmakuCache = new Map<number, DanmakuItem[]>();
+  const liveDanmaku = new LiveDanmakuHub(
+    () => auth.client(),
+    (message) => log(message, '弹幕'),
+    (roomId) => fetchLiveDanmaku(auth.client(), roomId),
+  );
   const server = await startApiServer({
     token,
     version,
@@ -140,11 +149,13 @@ async function initServices(context: vscode.ExtensionContext): Promise<Services>
       log(`已加载 ${items.length} 条弹幕（cid ${cid}）`, '弹幕');
       return items;
     },
-    onDanmaku: (items) => {
+    onDanmaku: (items, live) => {
       for (const item of items) {
-        log(`${formatClock(item.time)} ${item.text}`, '弹幕');
+        log(live ? `${item.text}` : `${formatClock(item.time)} ${item.text}`, '弹幕');
       }
     },
+    getLiveRoom: (input) => fetchLiveRoom(auth.client(), input),
+    getLiveDanmaku: (roomId) => liveDanmaku.poll(roomId),
     loginQr: () => auth.generateQr(),
     loginPoll: (key) => auth.pollQr(key),
     logout: () => auth.logout(),
@@ -174,7 +185,7 @@ async function initServices(context: vscode.ExtensionContext): Promise<Services>
   log(`客户端日志：${clientLogPath}`, '启动');
   log(`音频转码器：${findAudioTranscoder()?.name ?? '未找到（无法播放 AAC 音轨）'}`, '启动');
 
-  const started: Services = { auth, state, server, token };
+  const started: Services = { auth, state, server, token, liveDanmaku };
   await syncSkinConfig(context, started);
   await ensureVisibleAfterUpdate(context, started, version);
   updateStatusBar(started);

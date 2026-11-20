@@ -32,6 +32,7 @@ import { Toaster, toast } from 'sonner';
 import { parseVideoInput } from '../bilibili/parse';
 import type {
   DanmakuItem,
+  LiveRoomInfo,
   LoginQr,
   MiniRect,
   PlayInfo,
@@ -43,6 +44,8 @@ import type {
 import { DEFAULT_SKIN_SETTINGS } from '../shared/types';
 import { SkinApi } from './api';
 import { Button } from './components/ui/button';
+import { Slider } from './components/ui/slider';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from './components/ui/tooltip';
 import { Switch } from './components/ui/switch';
 import {
   Select,
@@ -124,10 +127,15 @@ export function Hud({ config, videoHost }: HudProps) {
   const [miniPreviewWidth, setMiniPreviewWidth] = useState(0);
   const [miniPreviewHeight, setMiniPreviewHeight] = useState(0);
   const [miniBodyHeight, setMiniBodyHeight] = useState<number | null>(null);
+  const [liveMode, setLiveMode] = useState(false);
+  const [liveRoom, setLiveRoom] = useState<LiveRoomInfo | null>(null);
+  const [liveLoading, setLiveLoading] = useState(false);
+  const liveSeenIds = useRef<Set<string>>(new Set());
   const [danmakuList, setDanmakuList] = useState<DanmakuItem[] | null>(null);
   const danmakuListRef = useRef<DanmakuItem[] | null>(null);
   const danmakuCursor = useRef(0);
   const danmakuLastTime = useRef(0);
+  const danmakuEmitAt = useRef(0);
   danmakuListRef.current = danmakuList;
   const miniDraftRef = useRef<MiniBoxRect | null>(null);
   miniDraftRef.current = miniDraft;
@@ -154,10 +162,6 @@ export function Hud({ config, videoHost }: HudProps) {
   const [pillExpanding, setPillExpanding] = useState(false);
   const pillExpandedAt = useRef(0);
   const pillExpandTimer = useRef<number | undefined>(undefined);
-  const [volOpen, setVolOpen] = useState(false);
-  const [volPos, setVolPos] = useState<{ left: number; top: number } | null>(null);
-  const volButtonRef = useRef<HTMLButtonElement | null>(null);
-  const volCloseTimer = useRef<number | undefined>(undefined);
   const pillTitleWrapRef = useRef<HTMLSpanElement | null>(null);
   const pillTitleRef = useRef<HTMLSpanElement | null>(null);
   const titleTimeline = useRef<gsap.core.Timeline | null>(null);
@@ -686,13 +690,6 @@ export function Hud({ config, videoHost }: HudProps) {
     return () => observer.disconnect();
   }, [miniEditing]);
 
-  // 面板打开或胶囊收起时关掉音量浮层
-  useEffect(() => {
-    if (open || !pillWide) {
-      setVolOpen(false);
-    }
-  }, [open, pillWide]);
-
   // 弹幕：打开后拉取整段弹幕，播放时把到时间的弹幕交给宿主打印到输出面板
   useEffect(() => {
     setDanmakuList(null);
@@ -705,20 +702,75 @@ export function Hud({ config, videoHost }: HudProps) {
     void api
       .danmaku(info.cid)
       .then((result) => {
-        if (!cancelled && result.ok) {
+        if (cancelled) {
+          return;
+        }
+        if (result.ok) {
           setDanmakuList(result.items);
+          logClient('info', 'danmaku loaded', { cid: info.cid, count: result.items.length });
+        } else {
+          logClient('error', 'danmaku load failed', { cid: info.cid });
         }
       })
-      .catch(() => undefined);
+      .catch((error: unknown) => {
+        logClient('error', 'danmaku load failed', { message: toMessage(error) });
+      });
     return () => {
       cancelled = true;
     };
   }, [api, settings.danmaku, info?.cid]);
 
+  // 直播弹幕：轮询 B 站的历史弹幕接口，按 id 去重后打印到输出面板
+  useEffect(() => {
+    if (!liveMode || !liveRoom?.roomId || !settings.danmaku || liveRoom.liveStatus !== 1) {
+      return;
+    }
+    let cancelled = false;
+    const poll = async () => {
+      try {
+        const result = await api.liveDanmaku(liveRoom.roomId);
+        if (cancelled || !result.ok) {
+          return;
+        }
+        const fresh = result.items.filter((item) => !liveSeenIds.current.has(item.id));
+        for (const item of result.items) {
+          liveSeenIds.current.add(item.id);
+        }
+        if (liveSeenIds.current.size > 800) {
+          liveSeenIds.current = new Set(result.items.map((item) => item.id));
+        }
+        if (fresh.length > 0) {
+          void api
+            .emitDanmaku(
+              fresh.slice(-8).map((item) => ({
+                time: 0,
+                text: item.nickname ? `${item.nickname}：${item.text}` : item.text,
+              })),
+              true,
+            )
+            .catch(() => undefined);
+        }
+      } catch {
+        // 下一轮再试
+      }
+    };
+    void poll();
+    const timer = window.setInterval(poll, 2500);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [api, liveMode, liveRoom, settings.danmaku]);
+
   const emitDanmaku = useCallback(
     (time: number) => {
       const list = danmakuListRef.current;
       if (!list || list.length === 0) {
+        return;
+      }
+      // 弹幕密集时 timeupdate 每 250ms 就有一条，攒一下再发，避免几十个请求/秒
+      const now = Date.now();
+      if (now - danmakuEmitAt.current < 400) {
         return;
       }
       const last = danmakuLastTime.current;
@@ -746,6 +798,7 @@ export function Hud({ config, videoHost }: HudProps) {
       }
       danmakuCursor.current = index;
       if (batch.length > 0) {
+        danmakuEmitAt.current = now;
         void api.emitDanmaku(batch).catch(() => undefined);
       }
     },
@@ -903,7 +956,6 @@ export function Hud({ config, videoHost }: HudProps) {
   useEffect(() => {
     return () => {
       window.clearTimeout(pillExpandTimer.current);
-      window.clearTimeout(volCloseTimer.current);
       titleTimeline.current?.kill();
     };
   }, []);
@@ -1368,7 +1420,81 @@ export function Hud({ config, videoHost }: HudProps) {
     });
   });
 
+  const loadLiveInput = async (raw: string) => {
+    const text = raw.trim();
+    if (!text) {
+      setError('请输入直播间链接或房间号');
+      return;
+    }
+    setLiveLoading(true);
+    setError(null);
+    try {
+      const result = await api.liveRoom(text);
+      if (!result.ok || !result.room) {
+        setError(result.error ?? '直播间加载失败');
+        toast.error(result.error ?? '直播间加载失败');
+        return;
+      }
+      const room = result.room;
+      liveSeenIds.current.clear();
+      setLiveRoom(room);
+      if (!room.streamUrl) {
+        setSrcUrl(null);
+        setAudioSrc(null);
+        toast.warning('主播还没开播');
+        return;
+      }
+      setInfo(null);
+      setCurrentTime(0);
+      setDuration(0);
+      pendingSeek.current = 0;
+      backupIndex.current = 0;
+      setSrcUrl(api.liveStreamUrl(room.streamUrl, (room.videoCodec ?? 'avc') !== 'avc'));
+      setAudioSrc(null);
+      try {
+        await api.patch({ visible: true });
+      } catch {
+        // 服务端不可用时静默重试
+      }
+    } finally {
+      setLiveLoading(false);
+    }
+  };
+
+  const changeLiveMode = (next: boolean) => {
+    if (next === liveMode) {
+      return;
+    }
+    setLiveMode(next);
+    setError(null);
+    liveSeenIds.current.clear();
+    if (next) {
+      // 切到直播：先停下当前视频，等用户贴直播间链接
+      setLiveRoom(null);
+      setInfo(null);
+      setSrcUrl(null);
+      setAudioSrc(null);
+      videoRef.current?.pause();
+      toast.info('直播模式：贴入直播间链接或房间号（如 live.bilibili.com/6）');
+      return;
+    }
+    // 切回点播：恢复上次看的视频
+    setLiveRoom(null);
+    setInfo(null);
+    setSrcUrl(null);
+    setAudioSrc(null);
+    setInput('');
+    const ref = stateRef.current?.video;
+    if (ref) {
+      void load(ref, settingsRef.current.quality);
+    }
+  };
+
   const loadManual = async () => {
+    if (liveMode) {
+      await loadLiveInput(input);
+      return;
+    }
     const ref = parseVideoInput(input);
     if (!ref) {
       setError('无法识别 BV 号 / av 号 / 链接');
@@ -1481,21 +1607,6 @@ export function Hud({ config, videoHost }: HudProps) {
     }
   };
 
-  // 音量滑杆：悬停音量按钮时在按钮正上方弹出（胶囊 overflow 会裁切，所以用 portal）
-  const openVolumePopover = () => {
-    window.clearTimeout(volCloseTimer.current);
-    const rect = volButtonRef.current?.getBoundingClientRect();
-    if (rect) {
-      setVolPos({ left: Math.round(rect.left + rect.width / 2), top: Math.round(rect.top - 6) });
-    }
-    setVolOpen(true);
-  };
-
-  const closeVolumePopover = () => {
-    window.clearTimeout(volCloseTimer.current);
-    volCloseTimer.current = window.setTimeout(() => setVolOpen(false), 220);
-  };
-
   // 标题 hover 溢出时来回滚动（没有溢出就不动）
   const startTitleScroll = () => {
     const wrap = pillTitleWrapRef.current;
@@ -1533,7 +1644,26 @@ export function Hud({ config, videoHost }: HudProps) {
     }
   };
 
+  // 展开动画期间先别挂 Tooltip，否则鼠标扫过音量按钮会提前弹出来
+  const canHoverVolume = pillWide && !open && !pillExpanding;
+  const volumeTrigger = (
+    <button
+      type="button"
+      className={`bili-icon-btn ${muted ? 'bili-muted' : ''}`}
+      title={muted ? '取消静音' : '静音'}
+      aria-label={muted ? '取消静音' : '静音'}
+      onClick={toggleMute}
+    >
+      <Volume width={14} height={14} />
+    </button>
+  );
+
   const handleVideoError = () => {
+    if (isLive) {
+      setError('直播流中断，请重新加载直播间');
+      toast.error('直播流中断，请重新加载直播间');
+      return;
+    }
     if (!info) {
       setError('视频加载失败');
       return;
@@ -1621,7 +1751,7 @@ export function Hud({ config, videoHost }: HudProps) {
 
   // 所有提示都走 sonner，不再往设置面板里塞 alert（否则会把面板撑高）。
   const audioPreparing = Boolean(audioSrc) && !audioReady;
-  const busy = loading || audioPreparing;
+  const busy = loading || audioPreparing || liveLoading;
   const isLightTheme =
     typeof document !== 'undefined' && document.body.classList.contains('vscode-light');
 
@@ -1896,6 +2026,9 @@ export function Hud({ config, videoHost }: HudProps) {
     });
   };
 
+  const isLive = liveMode && Boolean(liveRoom);
+  const displayTitle = isLive ? liveRoom?.title ?? '直播' : info?.title ?? 'B站视频皮肤';
+
   const qualityLabel =
     info?.qualities.find((quality) => quality.qn === info.quality)?.desc ??
     (info ? `${info.quality}P` : '');
@@ -2022,17 +2155,27 @@ export function Hud({ config, videoHost }: HudProps) {
           >
             <div className="bili-panel-content" ref={panelContentRef}>
               <div className="bp-flex bp-items-center bp-gap-2 bili-divider-b bp-px-3 bp-py-2.5">
-                {info ? (
+                {info || isLive ? (
                   <img
                     className="bp-h-6 bp-w-6 bp-shrink-0 bp-rounded-md bp-object-cover"
-                    src={logoUrl}
+                    src={isLive ? liveRoom?.cover || logoUrl : logoUrl}
                     alt=""
+                    referrerPolicy="no-referrer"
                   />
                 ) : (
                   <span className="bili-skeleton bili-skeleton-avatar" />
                 )}
                 <div className="bp-min-w-0 bp-flex-1">
-                  {info ? (
+                  {isLive ? (
+                    <>
+                      <div className="bp-truncate bp-text-[13px] bp-font-medium">{displayTitle}</div>
+                      <div className="bp-truncate bp-text-[11px] bili-muted">
+                        {`直播${liveRoom?.owner ? ` · ${liveRoom.owner}` : ''}${
+                          liveRoom?.online ? ` · ${liveRoom.online} 人气` : ''
+                        }`}
+                      </div>
+                    </>
+                  ) : info ? (
                     <>
                       <div className="bp-truncate bp-text-[13px] bp-font-medium">{info.title}</div>
                       <div className="bp-truncate bp-text-[11px] bili-muted">
@@ -2078,29 +2221,40 @@ export function Hud({ config, videoHost }: HudProps) {
                   )}
                 </button>
                 <div className="bp-flex bp-min-w-0 bp-flex-1 bp-items-center bp-gap-2">
-                  <input
-                    className="bili-range"
-                    type="range"
-                    min={0}
-                    max={Math.max(duration, 0.1)}
-                    step={0.1}
-                    value={Math.min(currentTime, duration || 0.1)}
-                    style={rangeFill(currentTime, 0, Math.max(duration, 0.1))}
-                    aria-label="播放进度"
-                    onChange={(event) => {
-                      const next = Number(event.target.value);
-                      setCurrentTime(next);
-                      if (videoRef.current) {
-                        videoRef.current.currentTime = next;
-                      }
-                    }}
-                  />
-                  {info ? (
-                    <span className="bp-w-[86px] bp-shrink-0 bp-text-right bp-text-[11px] bp-tabular-nums bili-muted">
-                      {formatTime(currentTime)} / {formatTime(duration)}
-                    </span>
+                  {isLive ? (
+                    <>
+                      <span className="bili-live-badge">LIVE</span>
+                      <span className="bp-text-[11px] bili-muted">
+                        {liveLoading ? '正在连接直播流…' : '直播没有进度条，暂停后继续会回到最新画面'}
+                      </span>
+                    </>
                   ) : (
-                    <span className="bili-skeleton bili-skeleton-time" />
+                    <>
+                      <input
+                        className="bili-range"
+                        type="range"
+                        min={0}
+                        max={Math.max(duration, 0.1)}
+                        step={0.1}
+                        value={Math.min(currentTime, duration || 0.1)}
+                        style={rangeFill(currentTime, 0, Math.max(duration, 0.1))}
+                        aria-label="播放进度"
+                        onChange={(event) => {
+                          const next = Number(event.target.value);
+                          setCurrentTime(next);
+                          if (videoRef.current) {
+                            videoRef.current.currentTime = next;
+                          }
+                        }}
+                      />
+                      {info ? (
+                        <span className="bp-w-[86px] bp-shrink-0 bp-text-right bp-text-[11px] bp-tabular-nums bili-muted">
+                          {formatTime(currentTime)} / {formatTime(duration)}
+                        </span>
+                      ) : (
+                        <span className="bili-skeleton bili-skeleton-time" />
+                      )}
+                    </>
                   )}
                 </div>
               </div>
@@ -2127,7 +2281,7 @@ export function Hud({ config, videoHost }: HudProps) {
                   onChange={(event) => changeVolume(Number(event.target.value))}
                 />
                 <div className="bp-ml-auto bp-flex bp-items-center bp-gap-1.5">
-                  {!info ? (
+                  {!info && !isLive ? (
                     <>
                       <span className="bili-skeleton bili-skeleton-chip" />
                       <span className="bili-skeleton bili-skeleton-chip" />
@@ -2156,30 +2310,37 @@ export function Hud({ config, videoHost }: HudProps) {
                       <PictureInPicture width={13} height={13} />
                     </button>
                   ) : null}
-                  <button
-                    type="button"
-                    className="bili-icon-btn"
-                    title="刷新清晰度（登录后可用更高画质）"
-                    aria-label="刷新清晰度"
-                    onClick={refreshPlayInfo}
-                  >
-                    <Refresh width={13} height={13} />
-                  </button>
-                  <Select
-                    value={String(info?.quality ?? settings.quality)}
-                    onValueChange={(value) => void changeQuality(Number(value))}
-                  >
-                    <SelectTrigger className="bili-select-trigger bili-quality-trigger" aria-label="清晰度">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {qualityItems.map((quality) => (
-                        <SelectItem key={quality.qn} value={String(quality.qn)}>
-                          {quality.desc}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  {isLive ? null : (
+                    <>
+                      <button
+                        type="button"
+                        className="bili-icon-btn"
+                        title="刷新清晰度（登录后可用更高画质）"
+                        aria-label="刷新清晰度"
+                        onClick={refreshPlayInfo}
+                      >
+                        <Refresh width={13} height={13} />
+                      </button>
+                      <Select
+                        value={String(info?.quality ?? settings.quality)}
+                        onValueChange={(value) => void changeQuality(Number(value))}
+                      >
+                        <SelectTrigger
+                          className="bili-select-trigger bili-quality-trigger"
+                          aria-label="清晰度"
+                        >
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {qualityItems.map((quality) => (
+                            <SelectItem key={quality.qn} value={String(quality.qn)}>
+                              {quality.desc}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </>
+                  )}
                   <Select
                     value={settings.fit}
                     onValueChange={(value) => {
@@ -2304,7 +2465,7 @@ export function Hud({ config, videoHost }: HudProps) {
                   className={`bp-space-y-2.5${miniBodyHeight !== null ? ' bili-body-swap-anim' : ''}`}
                   ref={normalBodyRef}
                 >
-              {!info ? (
+              {isLive ? null : !info ? (
                 <div className="bp-flex bp-items-center bili-divider-t bp-pt-2">
                   <span className="bili-skeleton bili-skeleton-episode" />
                 </div>
@@ -2408,7 +2569,7 @@ export function Hud({ config, videoHost }: HudProps) {
                 <input
                   className="bili-input"
                   type="text"
-                  placeholder="BV1GJ411x7h7 或视频链接"
+                  placeholder={liveMode ? '直播间链接或房间号，如 live.bilibili.com/6' : 'BV1GJ411x7h7 或视频链接'}
                   value={input}
                   spellCheck={false}
                   onChange={(event) => setInput(event.target.value)}
@@ -2418,14 +2579,22 @@ export function Hud({ config, videoHost }: HudProps) {
                     }
                   }}
                 />
-                <Button onClick={() => void loadManual()} disabled={loading}>
-                  {loading ? '加载中' : '播放'}
+                <Button onClick={() => void loadManual()} disabled={loading || liveLoading}>
+                  {loading || liveLoading ? '加载中' : '播放'}
                 </Button>
               </div>
                 </div>
               )}
 
               <div className="bp-flex bp-items-center bp-gap-2 bili-divider-t bp-pt-2">
+                <div className="bp-flex bp-items-center bp-gap-2">
+                  <Switch
+                    checked={liveMode}
+                    onCheckedChange={changeLiveMode}
+                    aria-label="直播模式"
+                  />
+                  <span className="bp-text-[11px] bili-subtle">直播模式</span>
+                </div>
                 <div className="bp-ml-auto bp-flex bp-items-center bp-gap-2">
                   {!state ? (
                     <>
@@ -2494,18 +2663,26 @@ export function Hud({ config, videoHost }: HudProps) {
                   <PlayerPlay width={13} height={13} />
                 )}
               </button>
-              <button
-                ref={volButtonRef}
-                type="button"
-                className={`bili-icon-btn ${muted ? 'bili-muted' : ''}`}
-                title={muted ? '取消静音' : '静音'}
-                aria-label={muted ? '取消静音' : '静音'}
-                onMouseEnter={openVolumePopover}
-                onMouseLeave={closeVolumePopover}
-                onClick={toggleMute}
-              >
-                <Volume width={14} height={14} />
-              </button>
+              {canHoverVolume ? (
+                <TooltipProvider delayDuration={120}>
+                  <Tooltip>
+                    <TooltipTrigger asChild>{volumeTrigger}</TooltipTrigger>
+                    <TooltipContent side="top" className="bili-vol-tooltip">
+                      <Slider
+                        orientation="vertical"
+                        min={0}
+                        max={1}
+                        step={0.01}
+                        value={[muted ? 0 : volume]}
+                        onValueChange={([next]) => changeVolume(next)}
+                        aria-label="音量"
+                      />
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              ) : (
+                volumeTrigger
+              )}
               <span
                 ref={pillTitleWrapRef}
                 className="bili-pill-title bp-min-w-0 bp-flex-1 bp-text-[12px] bili-text"
@@ -2513,32 +2690,9 @@ export function Hud({ config, videoHost }: HudProps) {
                 onMouseLeave={stopTitleScroll}
               >
                 <span ref={pillTitleRef} className="bili-pill-title-inner">
-                  {info?.title ?? 'B站视频皮肤'}
+                  {displayTitle}
                 </span>
               </span>
-              {volOpen && volPos ? (
-                createPortal(
-                  <div
-                    className="bili-vol-pop"
-                    style={{ left: volPos.left, top: volPos.top }}
-                    onMouseEnter={openVolumePopover}
-                    onMouseLeave={closeVolumePopover}
-                  >
-                    <input
-                      className="bili-range bili-range-vertical bili-pill-volume"
-                      type="range"
-                      min={0}
-                      max={1}
-                      step={0.05}
-                      value={muted ? 0 : volume}
-                      style={rangeFill(muted ? 0 : volume, 0, 1)}
-                      aria-label="音量"
-                      onChange={(event) => changeVolume(Number(event.target.value))}
-                    />
-                  </div>,
-                  document.getElementById('bili-skin-hud') ?? document.body,
-                )
-              ) : null}
               <button
                 type="button"
                 className="bili-icon-btn"

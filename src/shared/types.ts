@@ -13,6 +13,25 @@ export const PORT_RANGE = [17321, 17322, 17323, 17324, 17325, 17326, 17327, 1732
 export type FitMode = 'full' | 'mini';
 
 /** 小屏视频框：x/w 相对编辑区可用宽度，y 相对（编辑区高度 - 顶部留白），取值 0-1 */
+export interface LiveRoomInfo {
+  roomId: number;
+  title: string;
+  owner: string;
+  cover: string;
+  liveStatus: number;
+  online: number;
+  /** 上游 HLS 地址；未开播时为空 */
+  streamUrl?: string;
+  /** 上游视频编码，avc 时宿主直接 copy */
+  videoCodec?: string;
+}
+
+export interface LiveDanmakuItem {
+  id: string;
+  text: string;
+  nickname: string;
+}
+
 /** 一条弹幕：time 为视频内秒数 */
 export interface DanmakuItem {
   time: number;

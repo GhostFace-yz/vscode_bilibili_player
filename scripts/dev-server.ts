@@ -1,5 +1,8 @@
 import { BiliAuth } from '../src/bilibili/auth';
 import { getPlayInfo } from '../src/bilibili/playurl';
+import { fetchDanmaku } from '../src/bilibili/danmaku';
+import { fetchLiveDanmaku, fetchLiveRoom } from '../src/server/live';
+import { LiveDanmakuHub } from '../src/server/liveDanmaku';
 import { startApiServer } from '../src/server/apiServer';
 import {
   DEFAULT_SKIN_SETTINGS,
@@ -38,6 +41,12 @@ async function main(): Promise<void> {
     authRevision: auth.authRevision,
   };
 
+  const liveHub = new LiveDanmakuHub(
+    () => auth.client(),
+    (message) => console.log('[live-danmaku]', message),
+    (roomId) => fetchLiveDanmaku(auth.client(), roomId),
+  );
+
   const server = await startApiServer({
     token: 'dev-token',
     version: 'dev',
@@ -63,6 +72,15 @@ async function main(): Promise<void> {
       return { ...state, loggedIn: auth.loggedIn, user: auth.user, authRevision: auth.authRevision };
     },
     getPlayInfo: (ref: VideoRef, qn: number) => getPlayInfo(auth.client(), ref, qn),
+    cacheDir: '/tmp/bili-dev-cache',
+    getDanmaku: (cid: number) => fetchDanmaku(auth.client(), cid),
+    onDanmaku: (items, live) => {
+      for (const item of items) {
+        console.log(live ? `[danmaku:live] ${item.text}` : `[danmaku] ${item.time.toFixed(1)} ${item.text}`);
+      }
+    },
+    getLiveRoom: (input: string) => fetchLiveRoom(auth.client(), input),
+    getLiveDanmaku: (roomId: number) => liveHub.poll(roomId),
     loginQr: () => auth.generateQr(),
     loginPoll: (key: string) => auth.pollQr(key),
     logout: () => auth.logout(),
