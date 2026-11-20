@@ -1414,6 +1414,7 @@ export function Hud({ config, videoHost }: HudProps) {
 
   // 所有提示都走 sonner，不再往设置面板里塞 alert（否则会把面板撑高）。
   const audioPreparing = Boolean(audioSrc) && !audioReady;
+  const busy = loading || audioPreparing;
   const isLightTheme =
     typeof document !== 'undefined' && document.body.classList.contains('vscode-light');
 
@@ -1646,10 +1647,17 @@ export function Hud({ config, videoHost }: HudProps) {
                 <button
                   type="button"
                   className="bili-play-btn"
-                  aria-label={playing ? '暂停' : '播放'}
+                  aria-label={busy ? '加载中' : playing ? '暂停' : '播放'}
+                  aria-busy={busy}
                   onClick={togglePlay}
                 >
-                  {playing ? <PlayerPause width={16} height={16} /> : <PlayerPlay width={16} height={16} />}
+                  {busy ? (
+                    <span className="bili-spinner" />
+                  ) : playing ? (
+                    <PlayerPause width={16} height={16} />
+                  ) : (
+                    <PlayerPlay width={16} height={16} />
+                  )}
                 </button>
                 <div className="bp-flex bp-min-w-0 bp-flex-1 bp-items-center bp-gap-2">
                   <input
@@ -1934,10 +1942,17 @@ export function Hud({ config, videoHost }: HudProps) {
               <button
                 type="button"
                 className="bili-play-btn bili-play-btn-small"
-                aria-label={playing ? '暂停' : '播放'}
+                aria-label={busy ? '加载中' : playing ? '暂停' : '播放'}
+                aria-busy={busy}
                 onClick={togglePlay}
               >
-                {playing ? <PlayerPause width={13} height={13} /> : <PlayerPlay width={13} height={13} />}
+                {busy ? (
+                  <span className="bili-spinner" />
+                ) : playing ? (
+                  <PlayerPause width={13} height={13} />
+                ) : (
+                  <PlayerPlay width={13} height={13} />
+                )}
               </button>
               <span className="bp-min-w-0 bp-flex-1 bp-truncate bp-text-[12px] bili-text">
                 {info?.title ?? 'B站视频皮肤'}
@@ -1969,14 +1984,15 @@ export function Hud({ config, videoHost }: HudProps) {
               <button
                 type="button"
                 className="bili-play-btn bili-play-btn-small bili-mini-btn"
-                title="展开控制条"
-                aria-label="展开控制条"
+                title={busy ? '加载中' : '展开控制条'}
+                aria-label={busy ? '加载中' : '展开控制条'}
+                aria-busy={busy}
                 onClick={() => {
                   pillExpandedAt.current = Date.now();
                   setPillWide(true);
                 }}
               >
-                <MoreHorizTwotone width={16} height={16} />
+                {busy ? <span className="bili-spinner" /> : <MoreHorizTwotone width={16} height={16} />}
               </button>
             </div>
           </div>

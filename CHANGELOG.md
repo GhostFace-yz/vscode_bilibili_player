@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.4.18
+
+- 加载视频/切换画质时，迷你胶囊的 MoreHoriz 图标、宽胶囊播放按钮、设置面板播放按钮统一显示 spinner
+- spinner 覆盖 `loading` 和 `audioPreparing`（音轨转码/加载）两个阶段，音轨就绪后自动恢复播放图标
+
 ## 0.4.17
 
 - 提示信息全部改走 **sonner**（不再放进设置面板，避免撑高面板）：加载视频/准备音轨用带 spinner 的 loading toast，错误 toast 自带「重试」，普通提示、自动播放拦截提示分别用 info/warning
