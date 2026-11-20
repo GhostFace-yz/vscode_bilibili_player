@@ -27,15 +27,15 @@
 ## 启动
 
 1. 在扩展市场安装本扩展
-2. 命令面板（`Cmd/Ctrl+Shift+P`）执行 **B站皮肤: 开启**
+2. 命令面板（`Cmd/Ctrl+Shift+P`）执行 **vscode-bilibili-player: 开启**
 3. 弹出提示时选择「应用并重载」——这一步会把播放器注入 VS Code 工作台并改正校验和
 4. 重载后右下角出现控制条：输入 BV 号/视频链接播放，或扫码登录；直播点「直播模式」
-5. 恢复原样：**B站皮肤: 关闭（还原工作台）**
+5. 恢复原样：**vscode-bilibili-player: 关闭（还原工作台）**
 
 | 命令 | 作用 |
 | --- | --- |
-| `B站皮肤: 开启` | 注入并显示皮肤（`Cmd/Ctrl+Alt+B`） |
-| `B站皮肤: 关闭（还原工作台）` | 移除注入、恢复 CSP 与校验和（`Cmd/Ctrl+Alt+Shift+B`） |
-| `B站皮肤: 打开控制台` | 查看弹幕和运行日志 |
+| `vscode-bilibili-player: 开启` | 注入并显示皮肤（`Cmd/Ctrl+Alt+B`） |
+| `vscode-bilibili-player: 关闭（还原工作台）` | 移除注入、恢复 CSP 与校验和（`Cmd/Ctrl+Alt+Shift+B`） |
+| `vscode-bilibili-player: 打开控制台` | 查看弹幕和运行日志 |
 
 > 说明：开启皮肤需要修改 VS Code 安装目录中的 `workbench.html`。扩展会自动备份并在 `product.json` 里同步校验和，避免出现「安装已损坏」提示；VS Code 升级后重新执行一次「开启」即可。如果 VS Code 是系统级安装（Windows 的 `Program Files`），需要以管理员身份运行。

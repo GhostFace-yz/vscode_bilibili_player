@@ -2,7 +2,7 @@
   "name": "vscode-bilibili-player",
   "displayName": "vscode-bilibili-player",
   "description": "把 B 站视频铺在 VS Code 编辑区背景层播放，边写代码边看视频（支持直播、弹幕、小屏模式）。",
-  "version": "0.7.4",
+  "version": "0.7.5",
   "packageManager": "pnpm@10.32.1",
   "icon": "media/logo.png",
   "publisher": "YangZheng",
@@ -34,17 +34,17 @@
       {
         "command": "bilibiliPlayer.enable",
         "title": "开启",
-        "category": "B站皮肤"
+        "category": "vscode-bilibili-player"
       },
       {
         "command": "bilibiliPlayer.disable",
         "title": "关闭（还原工作台）",
-        "category": "B站皮肤"
+        "category": "vscode-bilibili-player"
       },
       {
         "command": "bilibiliPlayer.showOutput",
         "title": "打开控制台",
-        "category": "B站皮肤"
+        "category": "vscode-bilibili-player"
       }
     ],
     "keybindings": [

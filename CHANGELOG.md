@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.7.5
+
+- 命令面板分类从「B站皮肤」改成 `vscode-bilibili-player`，三条命令现在显示为 `vscode-bilibili-player: 开启 / 关闭（还原工作台） / 打开控制台`
+- 对应更新两份 README 里的命令名
+
 ## 0.7.4
 
 - 修复换 publisher 后一直「本地服务未响应：无效的本地访问令牌」：SkinApi 收到 401 时会重新拉取 `bilibili-skin.config.js`（带 cache buster）拿到新令牌并自动重试，不用手动重载窗口

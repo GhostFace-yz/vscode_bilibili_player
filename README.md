@@ -41,16 +41,16 @@ pnpm run vsix     # 生成 vscode-bilibili-player-<version>.vsix
 ## 启动
 
 1. 扩展面板右上角 `…` → **Install from VSIX…**，选择下载或构建出来的 vsix
-2. 命令面板（`Cmd/Ctrl+Shift+P`）执行 **B站皮肤: 开启**，确认「应用并重载」
+2. 命令面板（`Cmd/Ctrl+Shift+P`）执行 **vscode-bilibili-player: 开启**，确认「应用并重载」
 3. 重载后右下角出现控制条：输入 BV 号/视频链接播放，或点「扫码登录」；也可以打开「直播模式」看直播
-4. 想恢复原样：**B站皮肤: 关闭（还原工作台）**
+4. 想恢复原样：**vscode-bilibili-player: 关闭（还原工作台）**
 
 命令面板里只有三条命令：
 
 | 命令 | 作用 |
 | --- | --- |
-| `B站皮肤: 开启` | 注入皮肤并显示（`Cmd/Ctrl+Alt+B`） |
-| `B站皮肤: 关闭（还原工作台）` | 移除注入、恢复 CSP 与校验和（`Cmd/Ctrl+Alt+Shift+B`） |
-| `B站皮肤: 打开控制台` | 打开「Bilibili 皮肤」输出面板，查看弹幕和日志 |
+| `vscode-bilibili-player: 开启` | 注入皮肤并显示（`Cmd/Ctrl+Alt+B`） |
+| `vscode-bilibili-player: 关闭（还原工作台）` | 移除注入、恢复 CSP 与校验和（`Cmd/Ctrl+Alt+Shift+B`） |
+| `vscode-bilibili-player: 打开控制台` | 打开「Bilibili 皮肤」输出面板，查看弹幕和日志 |
 
 > 开启皮肤会修改 VS Code 安装目录里的 `workbench.html` 并同步 `product.json` 校验和，因此 VS Code 升级后需要重新执行一次「开启」；「关闭（还原工作台）」可以随时恢复，不会残留文件。
