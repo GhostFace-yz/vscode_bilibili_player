@@ -6,6 +6,7 @@ import { spawn } from 'node:child_process';
 import { Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import { findAudioTranscoder, findFfmpegBinary, type AudioTranscoder } from './audioTranscode';
+import { pruneAudioCache } from './audioCache';
 import { detectContentAspect, type ContentAspect } from './contentAspect';
 import { PORT_RANGE } from '../shared/types';
 import type {
@@ -50,6 +51,8 @@ export interface ApiServerDeps {
   logout(): Promise<void>;
   version: string;
   cacheDir: string;
+  /** 音频缓存上限（字节）；超出后按时间删最旧的，0 表示只保留最新一个 */
+  audioCacheMaxBytes?: number;
   log?(message: string): void;
   clientLog?(entry: ClientLogEntry): void;
 }
@@ -379,7 +382,7 @@ async function ensureTranscoded(
       await fs.promises.rm(input, { force: true });
       await fs.promises.rm(tmp, { force: true });
     }
-    pruneCache(deps.cacheDir, 8);
+    pruneAudioCache(deps.cacheDir, deps.audioCacheMaxBytes ?? 120 * 1024 * 1024);
   })();
 
   transcodeJobs.set(file, job);
@@ -452,21 +455,6 @@ async function serveFile(
   stream.on('error', () => res.destroy());
   req.on('close', () => stream.destroy());
   stream.pipe(res);
-}
-
-function pruneCache(dir: string, keep: number): void {
-  try {
-    const files = fs
-      .readdirSync(dir)
-      .filter((name) => name.endsWith('.mp3') || name.endsWith('.wav'))
-      .map((name) => ({ name, time: fs.statSync(path.join(dir, name)).mtimeMs }))
-      .sort((a, b) => b.time - a.time);
-    for (const entry of files.slice(keep)) {
-      fs.rmSync(path.join(dir, entry.name), { force: true });
-    }
-  } catch {
-    // 清理失败不影响播放
-  }
 }
 
 function isAllowedAudioHost(hostname: string): boolean {

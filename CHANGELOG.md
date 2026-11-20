@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.7.1
+
+- 音频缓存改为按总大小清理：默认上限 120MB（`bilibiliPlayer.audioCacheMaxMb`，0 表示只保留最新一个），启动时和每次转码后都会清理，并顺手删掉中断留下的 `.source.m4s` / `.tmp` 碎片
+- MP3 码率 192k → 128k，音轨缓存体积约减少 1/3（背景视频够用）
+- 客户端日志瘦身：只记录 `loadedmetadata/playing/pause/waiting/error`，并且写入过程中超过 5MB 就轮转 `.old`（原来只在启动时轮转，能涨到十几 MB）
+- 启动日志会打印音频缓存占用和上限
+
 ## 0.7.0
 
 - logo 换成 `src/asset/files/` 下的新图：HUD 面板/输出、扩展图标（`media/logo.png`）、直播模式左上角统一用 logo（不再显示直播间封面）

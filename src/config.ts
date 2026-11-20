@@ -6,6 +6,8 @@ export interface BilibiliPlayerSettings extends SkinSettings {
   defaultVideo: string;
   useIframePlayer: boolean;
   danmakuAutoScroll: boolean;
+  /** 音频缓存上限（MB） */
+  audioCacheMaxMb: number;
 }
 
 const FIT_MODES: FitMode[] = ['full', 'mini'];
@@ -29,6 +31,7 @@ export function getSettings(): BilibiliPlayerSettings {
     danmaku: config.get<boolean>('danmaku', false),
     useIframePlayer: config.get<boolean>('useIframePlayer', false),
     danmakuAutoScroll: config.get<boolean>('danmakuAutoScroll', true),
+    audioCacheMaxMb: clamp(config.get<number>('audioCacheMaxMb', 120), 0, 4096),
   };
 }
 

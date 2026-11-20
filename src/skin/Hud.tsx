@@ -1043,20 +1043,8 @@ export function Hud({ config, videoHost }: HudProps) {
     if (!video) {
       return;
     }
-    const events = [
-      'loadstart',
-      'loadedmetadata',
-      'loadeddata',
-      'canplay',
-      'canplaythrough',
-      'playing',
-      'pause',
-      'waiting',
-      'stalled',
-      'suspend',
-      'error',
-      'emptied',
-    ];
+    // 只保留关键事件：canplay/loadstart 这类每次加载/拖动都会刷，日志涨得太快
+    const events = ['loadedmetadata', 'playing', 'pause', 'waiting', 'error'];
     const handler = (event: Event) => {
       const media = event.currentTarget as HTMLMediaElement;
       if (event.type !== 'error') {

@@ -22,6 +22,8 @@
 
 没装 ffmpeg 时视频能播放但没有声音，HUD 会给出提示。
 
+音轨转码缓存在扩展的 globalStorage 目录，默认上限 120MB，可在设置 `bilibiliPlayer.audioCacheMaxMb` 调整（0 表示只保留当前视频）。
+
 ## 启动
 
 1. 在扩展市场安装本扩展

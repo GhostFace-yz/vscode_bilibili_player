@@ -95,7 +95,7 @@ function ffmpegTranscoder(bin: string): AudioTranscoder {
         '-c:a',
         'libmp3lame',
         '-b:a',
-        '192k',
+        '128k',
         '-ar',
         '48000',
         '-ac',

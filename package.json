@@ -2,7 +2,7 @@
   "name": "vscode-bilibili-player",
   "displayName": "Bilibili 视频皮肤",
   "description": "把 B 站视频铺在 VS Code 编辑区背景层播放，边写代码边看视频（支持直播、弹幕、小屏模式）。",
-  "version": "0.7.0",
+  "version": "0.7.1",
   "packageManager": "pnpm@10.32.1",
   "icon": "media/logo.png",
   "publisher": "GhostFace-yz",
@@ -195,6 +195,14 @@
           ],
           "description": "期望清晰度（实际可用清晰度取决于账号与视频源）。",
           "order": 8
+        },
+        "bilibiliPlayer.audioCacheMaxMb": {
+          "type": "number",
+          "default": 120,
+          "minimum": 0,
+          "maximum": 4096,
+          "description": "音频缓存上限（MB）。播放过的视频音轨会转码缓存下来，超出后按时间删除最旧的（至少保留最新一个）。0 表示只保留当前这个视频的缓存。",
+          "order": 6
         }
       }
     }

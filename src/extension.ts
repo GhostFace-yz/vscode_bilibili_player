@@ -11,6 +11,7 @@ import { getPlayInfo } from './bilibili/playurl';
 import { getSettings, migrateLegacyFitSetting } from './config';
 import { findAudioTranscoder } from './server/audioTranscode';
 import { startApiServer, type ApiServerHandle } from './server/apiServer';
+import { pruneAudioCache } from './server/audioCache';
 import { renderSkinConfig, type DanmakuItem, type SkinConfig } from './shared/types';
 import { ExtensionState } from './state';
 import { findChecksumMismatches, fixChecksums } from './workbench/checksums';
@@ -94,12 +95,17 @@ async function initServices(context: vscode.ExtensionContext): Promise<Services>
   try {
     fs.mkdirSync(path.dirname(clientLogPath), { recursive: true });
     fs.mkdirSync(cacheDir, { recursive: true });
-    if (fs.statSync(clientLogPath).size > 5 * 1024 * 1024) {
-      fs.renameSync(clientLogPath, `${clientLogPath}.old`);
-    }
+    rotateClientLog(clientLogPath);
   } catch {
     // 目录已存在或不可写，下面 append 失败会静默忽略
   }
+
+  const audioCacheMaxBytes = getSettings().audioCacheMaxMb * 1024 * 1024;
+  const cacheStats = pruneAudioCache(cacheDir, audioCacheMaxBytes);
+  log(
+    `音频缓存：${cacheStats.files} 个文件 / ${formatBytes(cacheStats.bytes)}（上限 ${getSettings().audioCacheMaxMb} MB，目录 ${cacheDir}）`,
+    '启动',
+  );
 
   let apiPort = 0;
   // 弹幕整段拉取一次就够，按 cid 缓存
@@ -113,6 +119,7 @@ async function initServices(context: vscode.ExtensionContext): Promise<Services>
     token,
     version,
     cacheDir,
+    audioCacheMaxBytes,
     getState: () => state.snapshot(),
     patchState: (patch) => state.patch(patch),
     getPlayInfo: async (ref, qn) => {
@@ -166,6 +173,10 @@ async function initServices(context: vscode.ExtensionContext): Promise<Services>
       };
       try {
         fs.appendFileSync(clientLogPath, `${JSON.stringify(payload)}\n`);
+        clientLogWrites += 1;
+        if (clientLogWrites % 200 === 0) {
+          rotateClientLog(clientLogPath);
+        }
       } catch {
         // 磁盘不可写时只保留输出通道
       }
@@ -430,6 +441,35 @@ async function requireServices(): Promise<Services> {
 }
 
 type LogTag = '启动' | '皮肤' | '播放' | '弹幕' | '客户端' | '错误';
+
+let clientLogWrites = 0;
+
+/** 客户端日志超过 5MB 就轮转成 .old（只保留一份历史）。 */
+function rotateClientLog(file: string): void {
+  try {
+    if (fs.statSync(file).size <= 5 * 1024 * 1024) {
+      return;
+    }
+    const old = `${file}.old`;
+    fs.rmSync(old, { force: true });
+    fs.renameSync(file, old);
+  } catch {
+    // 日志轮转失败不影响主流程
+  }
+}
+
+function formatBytes(bytes: number): string {
+  if (!Number.isFinite(bytes) || bytes <= 0) {
+    return '0 B';
+  }
+  if (bytes >= 1024 * 1024 * 1024) {
+    return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} GB`;
+  }
+  if (bytes >= 1024 * 1024) {
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  }
+  return `${Math.round(bytes / 1024)} KB`;
+}
 
 function clockNow(): string {
   const now = new Date();
