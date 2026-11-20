@@ -1,6 +1,5 @@
 # bili-in-code
 
-<img src="media/logo.png" width="120" align="right" alt="logo" />
 
 把 B 站视频铺在 VS Code 编辑区的背景层：代码浮在画面上，右下角悬浮控制条负责播放。支持点播、直播、弹幕和小屏模式。
 
