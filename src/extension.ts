@@ -3,12 +3,13 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as vscode from 'vscode';
 import { BiliAuth, type SecretStore } from './bilibili/auth';
+import { fetchDanmaku } from './bilibili/danmaku';
 import { parseVideoInput, describeVideo } from './bilibili/parse';
 import { getPlayInfo } from './bilibili/playurl';
 import { getSettings, migrateLegacyFitSetting } from './config';
 import { findAudioTranscoder } from './server/audioTranscode';
 import { startApiServer, type ApiServerHandle } from './server/apiServer';
-import { renderSkinConfig, type SkinConfig } from './shared/types';
+import { renderSkinConfig, type DanmakuItem, type SkinConfig } from './shared/types';
 import { ExtensionState } from './state';
 import { findChecksumMismatches, fixChecksums } from './workbench/checksums';
 import { locateWorkbench } from './workbench/locate';
@@ -54,7 +55,7 @@ export function activate(context: vscode.ExtensionContext): void {
   void migrateLegacyFitSetting().catch(() => undefined);
 
   services = initServices(context).catch((error: unknown) => {
-    log(`初始化失败：${toMessage(error)}`);
+    log(`初始化失败：${toMessage(error)}`, '错误');
     throw error;
   });
   void services.catch(() => undefined);
@@ -103,6 +104,8 @@ async function initServices(context: vscode.ExtensionContext): Promise<Services>
   }
 
   let apiPort = 0;
+  // 弹幕整段拉取一次就够，按 cid 缓存
+  const danmakuCache = new Map<number, DanmakuItem[]>();
   const server = await startApiServer({
     token,
     version,
@@ -111,6 +114,10 @@ async function initServices(context: vscode.ExtensionContext): Promise<Services>
     patchState: (patch) => state.patch(patch),
     getPlayInfo: async (ref, qn) => {
       const info = await getPlayInfo(auth.client(), ref, qn);
+      log(
+        `${info.title} · ${info.qualities.find((quality) => quality.qn === info.quality)?.desc ?? `${info.quality}P`} · ${describeVideo(ref)}`,
+        '播放',
+      );
       if (!apiPort) {
         return info;
       }
@@ -122,6 +129,21 @@ async function initServices(context: vscode.ExtensionContext): Promise<Services>
         audioUrl: info.audioUrl ? transcoded(info.audioUrl) : undefined,
         audioBackupUrls: info.audioBackupUrls?.map(transcoded),
       };
+    },
+    getDanmaku: async (cid) => {
+      const cached = danmakuCache.get(cid);
+      if (cached) {
+        return cached;
+      }
+      const items = await fetchDanmaku(auth.client(), cid);
+      danmakuCache.set(cid, items);
+      log(`已加载 ${items.length} 条弹幕（cid ${cid}）`, '弹幕');
+      return items;
+    },
+    onDanmaku: (items) => {
+      for (const item of items) {
+        log(`${formatClock(item.time)} ${item.text}`, '弹幕');
+      }
     },
     loginQr: () => auth.generateQr(),
     loginPoll: (key) => auth.pollQr(key),
@@ -137,18 +159,20 @@ async function initServices(context: vscode.ExtensionContext): Promise<Services>
       } catch {
         // 磁盘不可写时只保留输出通道
       }
-      log(
-        `[client:${entry.level ?? 'info'}] ${entry.message ?? ''}${
-          entry.data === undefined ? '' : ` ${stringifyForLog(entry.data)}`
-        }`,
-      );
+      const level = entry.level ?? 'info';
+      if (level !== 'info') {
+        log(
+          `${entry.message ?? ''}${entry.data === undefined ? '' : ` ${stringifyForLog(entry.data)}`}`,
+          '客户端',
+        );
+      }
     },
   });
 
   apiPort = server.port;
-  log(`本地 API 已启动：http://127.0.0.1:${server.port}`);
-  log(`客户端日志：${clientLogPath}`);
-  log(`音频转码器：${findAudioTranscoder()?.name ?? '未找到（无法播放 AAC 音轨）'}`);
+  log(`本地 API 已启动：http://127.0.0.1:${server.port}`, '启动');
+  log(`客户端日志：${clientLogPath}`, '启动');
+  log(`音频转码器：${findAudioTranscoder()?.name ?? '未找到（无法播放 AAC 音轨）'}`, '启动');
 
   const started: Services = { auth, state, server, token };
   await syncSkinConfig(context, started);
@@ -175,7 +199,7 @@ async function ensureVisibleAfterUpdate(
 
   await started.state.patch({ visible: true });
   await context.globalState.update(SKIN_VERSION_KEY, version);
-  log(`皮肤版本 ${lastVersion ?? '未知'} → ${version}，已重新显示。`);
+  log(`皮肤版本 ${lastVersion ?? '未知'} → ${version}，已重新显示。`, '皮肤');
 }
 
 async function getOrCreateToken(context: vscode.ExtensionContext): Promise<string> {
@@ -197,9 +221,9 @@ async function syncSkinConfig(context: vscode.ExtensionContext, started: Service
 
   try {
     writeSkinConfig(install, renderSkinConfig(skinConfigFor(context, started)));
-    log('已同步皮肤配置（端口/令牌）。');
+    log('已同步皮肤配置（端口/令牌）。', '皮肤');
   } catch (error) {
-    log(`同步皮肤配置失败：${toMessage(error)}`);
+    log(`同步皮肤配置失败：${toMessage(error)}`, '错误');
   }
 }
 
@@ -365,11 +389,11 @@ async function runApply(context: vscode.ExtensionContext): Promise<void> {
     await started.state.patch({ visible: true });
     applyPatch(install, assets, { backupRoot, cacheKey: String(Date.now()), log });
     await context.globalState.update(SKIN_VERSION_KEY, String(context.extension.packageJSON.version ?? '0.0.0'));
-    log(`皮肤已应用到 ${install.htmlPath}`);
+    log(`皮肤已应用到 ${install.htmlPath}`, '皮肤');
 
     const mismatches = findChecksumMismatches(install.appRoot, install.productJsonPath);
     if (mismatches.length > 0) {
-      log(`检测到 ${mismatches.length} 个文件校验和不一致（可能来自其它工具的修改）。`);
+      log(`检测到 ${mismatches.length} 个文件校验和不一致（可能来自其它工具的修改）。`, '皮肤');
       const list = mismatches
         .slice(0, 6)
         .map((mismatch) => `• ${mismatch.key}`)
@@ -388,7 +412,7 @@ async function runApply(context: vscode.ExtensionContext): Promise<void> {
 
       if (choice === '修复校验和并重载') {
         const fixed = fixChecksums(install.appRoot, install.productJsonPath, log);
-        log(`已修复 ${fixed.length} 个校验和。`);
+        log(`已修复 ${fixed.length} 个校验和。`, '皮肤');
         await vscode.commands.executeCommand('workbench.action.reloadWindow');
       } else {
         void vscode.window.showInformationMessage(
@@ -430,7 +454,7 @@ async function runRestore(): Promise<void> {
     }
 
     restorePatch(install, { log });
-    log('已还原工作台。');
+    log('已还原工作台。', '皮肤');
 
     if (answer === '还原并重载') {
       await vscode.commands.executeCommand('workbench.action.reloadWindow');
@@ -475,7 +499,7 @@ async function runFixChecksums(): Promise<void> {
     }
 
     const fixed = fixChecksums(install.appRoot, install.productJsonPath, log);
-    log(`已修复 ${fixed.length} 个校验和。`);
+    log(`已修复 ${fixed.length} 个校验和。`, '皮肤');
 
     if (answer === '修复并重载') {
       await vscode.commands.executeCommand('workbench.action.reloadWindow');
@@ -513,17 +537,37 @@ async function requireServices(): Promise<Services> {
   return services;
 }
 
-function log(message: string): void {
+type LogTag = '启动' | '皮肤' | '播放' | '弹幕' | '客户端' | '错误';
+
+function log(message: string, tag?: LogTag): void {
   try {
-    output?.appendLine(`[${new Date().toISOString()}] ${message}`);
+    const now = new Date();
+    const time = [now.getHours(), now.getMinutes(), now.getSeconds()]
+      .map((value) => String(value).padStart(2, '0'))
+      .join(':');
+    output?.appendLine(tag ? `[${time}] [${tag}] ${message}` : `[${time}] ${message}`);
   } catch {
     // 重载窗口时输出通道可能已关闭，不能让它中断注入/还原流程
   }
 }
 
+function formatClock(seconds: number): string {
+  if (!Number.isFinite(seconds) || seconds < 0) {
+    return '0:00';
+  }
+  const total = Math.floor(seconds);
+  const minutes = Math.floor(total / 60);
+  const rest = total % 60;
+  if (minutes >= 60) {
+    const hours = Math.floor(minutes / 60);
+    return `${hours}:${String(minutes % 60).padStart(2, '0')}:${String(rest).padStart(2, '0')}`;
+  }
+  return `${minutes}:${String(rest).padStart(2, '0')}`;
+}
+
 function reportError(error: unknown): void {
   const message = toMessage(error);
-  log(`错误：${message}`);
+  log(`错误：${message}`, '错误');
   void vscode.window.showErrorMessage(`B站皮肤：${message}`);
 }
 

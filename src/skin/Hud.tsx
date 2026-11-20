@@ -14,6 +14,7 @@ import { useGSAP } from '@gsap/react';
 import {
   ChevronLeft,
   ChevronRight,
+  MessageDots,
   Minus,
   PictureInPicture,
   PlayerPause,
@@ -30,6 +31,7 @@ import { MoreHorizTwotone } from '@ricons/material';
 import { Toaster, toast } from 'sonner';
 import { parseVideoInput } from '../bilibili/parse';
 import type {
+  DanmakuItem,
   LoginQr,
   MiniRect,
   PlayInfo,
@@ -63,6 +65,20 @@ const QUALITY_CHOICES = [16, 32, 64, 74, 80, 112, 116, 120];
 const MINI_MIN_WIDTH = 120;
 
 type MiniBoxRect = { x: number; y: number; w: number; h: number };
+
+function lowerBound(items: DanmakuItem[], time: number): number {
+  let low = 0;
+  let high = items.length;
+  while (low < high) {
+    const mid = (low + high) >> 1;
+    if (items[mid].time < time) {
+      low = mid + 1;
+    } else {
+      high = mid;
+    }
+  }
+  return low;
+}
 
 function clampNumber(value: number, min: number, max: number): number {
   if (!Number.isFinite(value)) {
@@ -108,6 +124,11 @@ export function Hud({ config, videoHost }: HudProps) {
   const [miniPreviewWidth, setMiniPreviewWidth] = useState(0);
   const [miniPreviewHeight, setMiniPreviewHeight] = useState(0);
   const [miniBodyHeight, setMiniBodyHeight] = useState<number | null>(null);
+  const [danmakuList, setDanmakuList] = useState<DanmakuItem[] | null>(null);
+  const danmakuListRef = useRef<DanmakuItem[] | null>(null);
+  const danmakuCursor = useRef(0);
+  const danmakuLastTime = useRef(0);
+  danmakuListRef.current = danmakuList;
   const miniDraftRef = useRef<MiniBoxRect | null>(null);
   miniDraftRef.current = miniDraft;
   const miniGesture = useRef<{
@@ -663,6 +684,65 @@ export function Hud({ config, videoHost }: HudProps) {
     observer.observe(element);
     return () => observer.disconnect();
   }, [miniEditing]);
+
+  // 弹幕：打开后拉取整段弹幕，播放时把到时间的弹幕交给宿主打印到输出面板
+  useEffect(() => {
+    setDanmakuList(null);
+    danmakuCursor.current = 0;
+    danmakuLastTime.current = 0;
+    if (!settings.danmaku || !info?.cid) {
+      return;
+    }
+    let cancelled = false;
+    void api
+      .danmaku(info.cid)
+      .then((result) => {
+        if (!cancelled && result.ok) {
+          setDanmakuList(result.items);
+        }
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [api, settings.danmaku, info?.cid]);
+
+  const emitDanmaku = useCallback(
+    (time: number) => {
+      const list = danmakuListRef.current;
+      if (!list || list.length === 0) {
+        return;
+      }
+      const last = danmakuLastTime.current;
+      danmakuLastTime.current = time;
+
+      if (time < last - 1) {
+        // 倒退/重播：重新定位游标，不补发已经过去的弹幕
+        danmakuCursor.current = lowerBound(list, time);
+        return;
+      }
+
+      const jumped = time - last > 4;
+      let index = danmakuCursor.current;
+      const batch: DanmakuItem[] = [];
+      while (index < list.length && list[index].time <= time + 0.05) {
+        const item = list[index];
+        index += 1;
+        // 拖动进度条/跳集后不补发一大串
+        if (!jumped && time - item.time <= 4) {
+          batch.push(item);
+        }
+        if (batch.length >= 8) {
+          break;
+        }
+      }
+      danmakuCursor.current = index;
+      if (batch.length > 0) {
+        void api.emitDanmaku(batch).catch(() => undefined);
+      }
+    },
+    [api],
+  );
 
   // 移除黑边：让扩展宿主用 ffmpeg 探测一次画面的真实宽高比（按 bvid:cid 缓存）。
   // 关闭时不用探测，直接按 <video> 自带的 videoWidth / videoHeight 排布。
@@ -1906,7 +1986,11 @@ export function Hud({ config, videoHost }: HudProps) {
           }}
           onResize={(event) => updateVideoRatio(event.currentTarget)}
           onTimeUpdate={(event) => {
-            setCurrentTime(event.currentTarget.currentTime);
+            const time = event.currentTarget.currentTime;
+            setCurrentTime(time);
+            if (settings.danmaku) {
+              emitDanmaku(time);
+            }
             if (!event.currentTarget.paused) {
               syncAudio();
             }
@@ -2112,6 +2196,22 @@ export function Hud({ config, videoHost }: HudProps) {
                     </>
                   ) : (
                     <>
+                  <button
+                    type="button"
+                    className="bili-icon-btn"
+                    title={settings.danmaku ? '关闭弹幕输出' : '把弹幕按时间打印到输出面板'}
+                    aria-label="弹幕"
+                    aria-pressed={settings.danmaku}
+                    onClick={() => {
+                      const next = !settings.danmaku;
+                      updateSettings({ danmaku: next });
+                      if (next) {
+                        toast.info('弹幕会按播放时间打印到「Bilibili 皮肤」输出面板');
+                      }
+                    }}
+                  >
+                    <MessageDots width={13} height={13} />
+                  </button>
                   {settings.fit === 'mini' ? (
                     <button
                       type="button"

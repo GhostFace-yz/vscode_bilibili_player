@@ -13,6 +13,12 @@ export const PORT_RANGE = [17321, 17322, 17323, 17324, 17325, 17326, 17327, 1732
 export type FitMode = 'full' | 'mini';
 
 /** 小屏视频框：x/w 相对编辑区可用宽度，y 相对（编辑区高度 - 顶部留白），取值 0-1 */
+/** 一条弹幕：time 为视频内秒数 */
+export interface DanmakuItem {
+  time: number;
+  text: string;
+}
+
 export interface MiniRect {
   x: number;
   y: number;
@@ -33,6 +39,8 @@ export interface SkinSettings {
   cropBars: boolean;
   /** 小屏模式下视频框的位置和宽度 */
   miniRect: MiniRect;
+  /** 弹幕：按播放时间把弹幕打印到输出面板 */
+  danmaku: boolean;
 }
 
 export interface BiliUser {
@@ -124,6 +132,7 @@ export const DEFAULT_SKIN_SETTINGS: SkinSettings = {
   hiddenMode: false,
   cropBars: true,
   miniRect: { x: 0.62, y: 0.55, w: 0.32 },
+  danmaku: false,
 };
 
 export function renderSkinConfig(config: SkinConfig): string {

@@ -2,7 +2,7 @@
   "name": "vscode-bilibili-player",
   "displayName": "Bilibili 视频皮肤",
   "description": "把 B 站视频铺在 VS Code 工作台背景层播放，边写代码边看视频。",
-  "version": "0.5.2",
+  "version": "0.6.0",
   "packageManager": "pnpm@10.32.1",
   "icon": "media/logo.png",
   "publisher": "GhostFace-yz",
@@ -163,6 +163,12 @@
           },
           "additionalProperties": false,
           "description": "小屏模式下视频框的位置和宽度（相对编辑区可用区域的 0-1 比例，高度按视频宽高比自动计算）。一般通过 HUD 的「小屏设置」拖动调整。",
+          "order": 5
+        },
+        "bilibiliPlayer.danmaku": {
+          "type": "boolean",
+          "default": false,
+          "description": "弹幕：打开后会把视频当前的弹幕按播放时间逐条打印到「Bilibili 皮肤」输出面板。",
           "order": 5
         },
         "bilibiliPlayer.cropBars": {

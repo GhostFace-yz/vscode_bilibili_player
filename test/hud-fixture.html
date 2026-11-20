@@ -269,6 +269,7 @@
     const wantCollapsed = params.get('collapsed') === '1';
     const wantError = params.get('error') === '1';
     const wantMini = params.get('mini') === '1';
+    const wantDanmaku = params.get('danmaku') === '1';
 
     const svg = (body) => 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(body);
     const avatar = svg(
@@ -301,6 +302,7 @@
         hiddenMode: false,
         cropBars: false,
         miniRect: { x: 0.62, y: 0.55, w: 0.32 },
+        danmaku: wantDanmaku,
       },
       loggedIn: true,
       user: { mid: 1, name: '三星堆机甲战士', face: avatar, vip: true },
@@ -392,6 +394,24 @@
       }
       if (path.endsWith('/api/content-aspect')) {
         return json({ ok: true, width: 1920, height: 960, aspect: 2, cropped: true });
+      }
+      if (path.endsWith('/api/danmaku/emit')) {
+        try {
+          window.__danmakuEmit = (window.__danmakuEmit || []).concat(JSON.parse(init?.body || '{}').items || []);
+        } catch {
+          // ignore
+        }
+        return json({ ok: true, count: 1 });
+      }
+      if (path.endsWith('/api/danmaku')) {
+        return json({
+          ok: true,
+          items: [
+            { time: 0.5, text: '前排' },
+            { time: 1.2, text: '这个皮肤有点东西' },
+            { time: 2.4, text: '弹幕测试' },
+          ],
+        });
       }
       return json({ error: 'not found' }, 404);
     };

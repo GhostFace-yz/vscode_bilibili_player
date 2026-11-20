@@ -13,6 +13,9 @@
   --bili-fg-subtle: var(--vscode-disabledForeground, #7a7a7a);
   --bili-bg: var(--vscode-editorWidget-background, var(--vscode-sideBar-background, #252526));
   --bili-bg-translucent: color-mix(in srgb, var(--bili-bg) 94%, transparent);
+  /* 胶囊 / 面板 / 弹窗统一的毛玻璃背景（颜色派生自当前主题的 editorWidget 背景） */
+  --bili-glass-bg: color-mix(in srgb, var(--bili-bg) 72%, transparent);
+  --bili-glass-filter: blur(20px) saturate(1.25);
   /* 边框取编辑器输入框/下拉框的细边框，避免 Dracula 的 panel.border（#BD93F9）过亮。 */
   --bili-border: var(
     --vscode-input-border,
@@ -165,12 +168,11 @@
   overflow: hidden;
   border: 1px solid var(--bili-border);
   border-radius: 16px;
-  background: var(--bili-bg);
-  background: var(--bili-bg-translucent);
+  background: var(--bili-glass-bg);
   color: var(--bili-fg);
   box-shadow: var(--bili-widget-shadow);
-  backdrop-filter: blur(18px) saturate(1.1);
-  -webkit-backdrop-filter: blur(18px) saturate(1.1);
+  backdrop-filter: var(--bili-glass-filter);
+  -webkit-backdrop-filter: var(--bili-glass-filter);
   transform-origin: 100% 100%;
   will-change: transform;
 }
@@ -192,12 +194,11 @@
   transition: width 760ms cubic-bezier(0.22, 1, 0.36, 1), padding 760ms cubic-bezier(0.22, 1, 0.36, 1);
   border: 1px solid var(--bili-border);
   border-radius: 999px;
-  background: var(--bili-bg);
-  background: var(--bili-bg-translucent);
+  background: var(--bili-glass-bg);
   color: var(--bili-fg);
   box-shadow: 0 12px 32px var(--vscode-widget-shadow, rgba(0, 0, 0, 0.45));
-  backdrop-filter: blur(18px) saturate(1.1);
-  -webkit-backdrop-filter: blur(18px) saturate(1.1);
+  backdrop-filter: var(--bili-glass-filter);
+  -webkit-backdrop-filter: var(--bili-glass-filter);
   transform-origin: 100% 100%;
   will-change: transform;
 }
@@ -689,12 +690,11 @@
   padding: 16px;
   border: 1px solid var(--bili-border);
   border-radius: 16px;
-  background: var(--bili-bg);
-  background: var(--bili-bg-translucent);
+  background: var(--bili-glass-bg);
   color: var(--bili-fg);
   box-shadow: var(--bili-widget-shadow);
-  backdrop-filter: blur(20px) saturate(1.1);
-  -webkit-backdrop-filter: blur(20px) saturate(1.1);
+  backdrop-filter: var(--bili-glass-filter);
+  -webkit-backdrop-filter: var(--bili-glass-filter);
 }
 
 .bili-qr-center {
@@ -877,13 +877,13 @@
 .bili-panel[data-peek='true'] {
   background: radial-gradient(
     circle var(--bili-peek-r, 0px) at var(--bili-peek-x, 50%) var(--bili-peek-y, 50%),
-    color-mix(in srgb, var(--bili-bg) 14%, transparent) 0%,
-    color-mix(in srgb, var(--bili-bg) 40%, transparent) 45%,
-    color-mix(in srgb, var(--bili-bg) 76%, transparent) 74%,
-    var(--bili-bg-translucent) 100%
+    color-mix(in srgb, var(--bili-bg) 4%, transparent) 0%,
+    color-mix(in srgb, var(--bili-bg) 22%, transparent) 45%,
+    color-mix(in srgb, var(--bili-bg) 50%, transparent) 74%,
+    var(--bili-glass-bg) 100%
   );
-  backdrop-filter: blur(14px) saturate(1.1);
-  -webkit-backdrop-filter: blur(14px) saturate(1.1);
+  backdrop-filter: blur(7px) saturate(1.1);
+  -webkit-backdrop-filter: blur(7px) saturate(1.1);
 }
 
 /* ---------- 小屏设置：编辑区缩略图 ---------- */

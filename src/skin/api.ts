@@ -1,5 +1,6 @@
 import { PORT_RANGE } from '../shared/types';
 import type {
+  DanmakuItem,
   LoginPoll,
   LoginQr,
   PlayInfo,
@@ -64,6 +65,20 @@ export class SkinApi {
   contentAspect(url: string, key: string, duration: number): Promise<ContentAspectResult> {
     const params = new URLSearchParams({ url, key, duration: String(Math.round(duration)) });
     return this.request<ContentAspectResult>(`/api/content-aspect?${params.toString()}`);
+  }
+
+  /** 拉取整段弹幕（宿主按 cid 缓存）。 */
+  danmaku(cid: number): Promise<{ ok: boolean; items: DanmakuItem[] }> {
+    return this.request<{ ok: boolean; items: DanmakuItem[] }>(`/api/danmaku?cid=${cid}`);
+  }
+
+  /** 把到时间的弹幕交给宿主打印到输出面板。 */
+  emitDanmaku(items: DanmakuItem[]): Promise<{ ok: boolean; count: number }> {
+    return this.request<{ ok: boolean; count: number }>('/api/danmaku/emit', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ items }),
+    });
   }
 
   diagnostics(payload: unknown): Promise<{ ok: boolean }> {

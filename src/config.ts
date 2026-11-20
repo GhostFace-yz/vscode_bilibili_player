@@ -25,14 +25,15 @@ export function getSettings(): BilibiliPlayerSettings {
     hiddenMode: config.get<boolean>('hiddenMode', false),
     cropBars: config.get<boolean>('cropBars', true),
     miniRect: normalizeMiniRect(config.get<unknown>('miniRect')),
+    danmaku: config.get<boolean>('danmaku', false),
     useIframePlayer: config.get<boolean>('useIframePlayer', false),
   };
 }
 
 export function getSkinSettings(): SkinSettings {
-  const { opacity, blur, dim, fit, muted, autoplay, quality, hiddenMode, cropBars, miniRect } =
+  const { opacity, blur, dim, fit, muted, autoplay, quality, hiddenMode, cropBars, miniRect, danmaku } =
     getSettings();
-  return { opacity, blur, dim, fit, muted, autoplay, quality, hiddenMode, cropBars, miniRect };
+  return { opacity, blur, dim, fit, muted, autoplay, quality, hiddenMode, cropBars, miniRect, danmaku };
 }
 
 /** 0.5.0 起 fit 只剩 full / mini，把老版本的 cover/contain/fill 写回 full，避免设置界面显示无效值。 */
@@ -74,6 +75,9 @@ export async function updateSkinSettings(patch: Partial<SkinSettings>): Promise<
   }
   if (typeof patch.cropBars === 'boolean') {
     updates.push(config.update('cropBars', patch.cropBars, vscode.ConfigurationTarget.Global));
+  }
+  if (typeof patch.danmaku === 'boolean') {
+    updates.push(config.update('danmaku', patch.danmaku, vscode.ConfigurationTarget.Global));
   }
   if (patch.miniRect) {
     updates.push(

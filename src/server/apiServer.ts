@@ -9,6 +9,7 @@ import { detectContentAspect, type ContentAspect } from './contentAspect';
 import { TEST_TONE_MP3 } from './tone';
 import { PORT_RANGE } from '../shared/types';
 import type {
+  DanmakuItem,
   LoginPoll,
   LoginQr,
   PlayInfo,
@@ -17,7 +18,7 @@ import type {
   VideoRef,
 } from '../shared/types';
 
-export const API_VERSION = 2;
+export const API_VERSION = 3;
 
 let lastDiagnostics: { at: number; payload: unknown } | null = null;
 /** 画面宽高比探测结果：key = bvid:cid（探测很慢，必须复用） */
@@ -38,6 +39,8 @@ export interface ApiServerDeps {
   getState(): Promise<SkinState>;
   patchState(patch: StatePatch): Promise<SkinState>;
   getPlayInfo(ref: VideoRef, qn: number): Promise<PlayInfo>;
+  getDanmaku?(cid: number): Promise<DanmakuItem[]>;
+  onDanmaku?(items: DanmakuItem[]): void;
   loginQr(): Promise<LoginQr>;
   loginPoll(key: string): Promise<LoginPoll>;
   logout(): Promise<void>;
@@ -139,6 +142,27 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
     };
     const info = await deps.getPlayInfo(ref, qn);
     sendJson(res, 200, info);
+    return;
+  }
+
+  if (path === '/api/danmaku' && req.method === 'GET') {
+    const cid = toInt(url.searchParams.get('cid'));
+    if (!cid) {
+      sendJson(res, 400, { error: '缺少 cid 参数' });
+      return;
+    }
+    const items = deps.getDanmaku ? await deps.getDanmaku(cid) : [];
+    sendJson(res, 200, { ok: true, items });
+    return;
+  }
+
+  if (path === '/api/danmaku/emit' && req.method === 'POST') {
+    const body = await readJson<{ items?: unknown }>(req);
+    const items = normalizeDanmakuItems(body.items);
+    if (items.length > 0) {
+      deps.onDanmaku?.(items);
+    }
+    sendJson(res, 200, { ok: true, count: items.length });
     return;
   }
 
@@ -669,4 +693,26 @@ async function resolveContentAspect(
 
   contentAspectInflight.set(key, task);
   return task;
+}
+
+function normalizeDanmakuItems(value: unknown): DanmakuItem[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  const items: DanmakuItem[] = [];
+  for (const entry of value.slice(0, 50)) {
+    if (!entry || typeof entry !== 'object') {
+      continue;
+    }
+    const { time, text } = entry as { time?: unknown; text?: unknown };
+    if (typeof time !== 'number' || !Number.isFinite(time) || typeof text !== 'string') {
+      continue;
+    }
+    const trimmed = text.trim();
+    if (!trimmed) {
+      continue;
+    }
+    items.push({ time, text: trimmed.slice(0, 200) });
+  }
+  return items;
 }
