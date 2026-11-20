@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.4.17
+
+- 提示信息全部改走 **sonner**（不再放进设置面板，避免撑高面板）：加载视频/准备音轨用带 spinner 的 loading toast，错误 toast 自带「重试」，普通提示、自动播放拦截提示分别用 info/warning
+- 修复音频已经出声但“正在准备音轨”一直不消失：新增 `audioReady`，音频 `canplay`/`playing`/`error` 时立即关闭 loading toast
+- 设置面板删除 error/notice/audioBlocked 三个 alert 区块，面板高度更稳定
+- sonner 的 CSS 由 esbuild 以文本方式打进 `skin.js`，不额外依赖运行时样式文件
+
 ## 0.4.16
 
 - 设置面板收起/展开不再用 `scale` 压扁内容：改为只动画面板高度，内容保持原始布局，超出部分由 `overflow:hidden` 裁掉

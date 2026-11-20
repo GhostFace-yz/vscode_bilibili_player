@@ -36,7 +36,7 @@ const builds = [
     format: 'iife',
     target: 'chrome120',
     jsx: 'automatic',
-    loader: { '.png': 'dataurl' },
+    loader: { '.png': 'dataurl', '.css': 'text' },
   },
 ];
 

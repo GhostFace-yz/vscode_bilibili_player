@@ -24,6 +24,7 @@ import {
   X,
 } from '@ricons/tabler';
 import { MoreHorizTwotone } from '@ricons/material';
+import { Toaster, toast } from 'sonner';
 import { parseVideoInput } from '../bilibili/parse';
 import type {
   LoginQr,
@@ -86,6 +87,7 @@ export function Hud({ config, videoHost }: HudProps) {
     bottom: number;
   } | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [audioReady, setAudioReady] = useState(false);
   const [audioBlocked, setAudioBlocked] = useState(false);
   const [online, setOnline] = useState(true);
   const [loading, setLoading] = useState(false);
@@ -248,9 +250,6 @@ export function Hud({ config, videoHost }: HudProps) {
         backupIndex.current = 0;
         setDuration(next.duration || 0);
         audioSwitching.current = false;
-        if (next.audioUrl) {
-          setNotice('正在准备音轨（首次播放需要转码）…');
-        }
         return next;
       } catch (loadError) {
         if (seq === loadSeq.current) {
@@ -611,6 +610,10 @@ export function Hud({ config, videoHost }: HudProps) {
       audioRef.current.volume = volume;
     }
   }, [volume]);
+
+  useEffect(() => {
+    setAudioReady(false);
+  }, [audioSrc]);
 
   // 从 DASH 切回原生 mp4 时，确保旧的独立音轨被彻底停掉。
   useEffect(() => {
@@ -1409,6 +1412,65 @@ export function Hud({ config, videoHost }: HudProps) {
     }
   };
 
+  // 所有提示都走 sonner，不再往设置面板里塞 alert（否则会把面板撑高）。
+  const audioPreparing = Boolean(audioSrc) && !audioReady;
+  const isLightTheme =
+    typeof document !== 'undefined' && document.body.classList.contains('vscode-light');
+
+  useEffect(() => {
+    if (!loading) {
+      toast.dismiss('bili-loading');
+      return;
+    }
+    // 缓存命中时几毫秒就好了，延迟一点再弹，避免 loading toast 闪一下。
+    const timer = window.setTimeout(() => {
+      toast.loading('正在加载视频…', { id: 'bili-loading', duration: Infinity });
+    }, 250);
+    return () => window.clearTimeout(timer);
+  }, [loading]);
+
+  useEffect(() => {
+    if (!audioPreparing) {
+      toast.dismiss('bili-audio');
+      return;
+    }
+    const timer = window.setTimeout(() => {
+      toast.loading('正在准备音轨…', { id: 'bili-audio', duration: Infinity });
+    }, 300);
+    return () => window.clearTimeout(timer);
+  }, [audioPreparing]);
+
+  useEffect(() => {
+    if (!notice) {
+      toast.dismiss('bili-notice');
+      return;
+    }
+    toast.info(notice, { id: 'bili-notice', duration: 4200 });
+  }, [notice]);
+
+  useEffect(() => {
+    if (!error) {
+      toast.dismiss('bili-error');
+      return;
+    }
+    toast.error(error, {
+      id: 'bili-error',
+      duration: 8000,
+      action: { label: '重试', onClick: retry },
+    });
+  }, [error, retry]);
+
+  useEffect(() => {
+    if (!audioBlocked) {
+      toast.dismiss('bili-blocked');
+      return;
+    }
+    toast.warning('VS Code 阻止了声音自动播放，点一下画面或喇叭图标即可开启声音', {
+      id: 'bili-blocked',
+      duration: 6000,
+    });
+  }, [audioBlocked]);
+
   // 隐藏播放模式：只有鼠标停在 HUD 上才应用用户设置的透明度/模糊/暗化；
   // 移开时 opacity=0、dim=1（暗化层完全盖住视频），编辑区回到正常颜色。
   const revealVideo = !settings.hiddenMode || hudHovered;
@@ -1506,9 +1568,17 @@ export function Hud({ config, videoHost }: HudProps) {
             pointerEvents: 'none',
           }}
           onLoadedMetadata={() => syncAudio()}
-          onCanPlay={() => syncAudio()}
+          onPlaying={() => {
+            setAudioReady(true);
+            syncAudio();
+          }}
+          onCanPlay={() => {
+            setAudioReady(true);
+            syncAudio();
+          }}
           onError={(event) => {
             if (event.currentTarget === audioRef.current) {
+              setAudioReady(true);
               handleAudioError();
             }
           }}
@@ -1805,23 +1875,6 @@ export function Hud({ config, videoHost }: HudProps) {
                 </Button>
               </div>
 
-              {error ? (
-                <div className="bili-alert bili-alert-error">
-                  <span className="bp-flex-1">{error}</span>
-                  <Button variant="secondary" size="sm" className="bp-shrink-0" onClick={retry}>
-                    重试
-                  </Button>
-                </div>
-              ) : null}
-
-              {notice ? <div className="bili-alert bili-alert-warning">{notice}</div> : null}
-
-              {audioBlocked ? (
-                <div className="bili-alert bili-alert-warning">
-                  VS Code 阻止了声音自动播放，点一下画面或喇叭图标即可开启声音
-                </div>
-              ) : null}
-
               <div className="bp-flex bp-items-center bp-gap-2 bili-divider-t bp-pt-2">
                 <span className={`bili-dot ${online ? 'bili-dot-online' : 'bili-dot-offline'}`} />
                 <span className="bp-text-[11px] bili-subtle">
@@ -1975,6 +2028,29 @@ export function Hud({ config, videoHost }: HudProps) {
             </div>
           </div>
         ) : null}
+
+        <Toaster
+          position="top-right"
+          offset={18}
+          theme={isLightTheme ? 'light' : 'dark'}
+          toastOptions={{
+            style: {
+              background: 'var(--bili-bg)',
+              color: 'var(--bili-fg)',
+              border: '1px solid var(--bili-border)',
+              borderRadius: '10px',
+              fontFamily: 'var(--bili-font)',
+              fontSize: '12px',
+            },
+          }}
+          style={
+            {
+              '--normal-bg': 'var(--bili-bg)',
+              '--normal-text': 'var(--bili-fg)',
+              '--normal-border': 'var(--bili-border)',
+            } as CSSProperties
+          }
+        />
       </div>
     </>
   );

@@ -1,4 +1,5 @@
 import { createRoot } from 'react-dom/client';
+import sonnerStyles from 'sonner/dist/styles.css';
 import { Hud } from './Hud';
 
 /**
@@ -7,6 +8,16 @@ import { Hud } from './Hud';
  */
 function mountPoint(): HTMLElement {
   return document.querySelector<HTMLElement>('.monaco-workbench') ?? document.body;
+}
+
+function ensureSonnerStyles(): void {
+  if (document.getElementById('bili-sonner-styles')) {
+    return;
+  }
+  const style = document.createElement('style');
+  style.id = 'bili-sonner-styles';
+  style.textContent = sonnerStyles;
+  document.head.append(style);
 }
 
 function boot(): void {
@@ -19,6 +30,7 @@ function boot(): void {
     return;
   }
   window.__BILI_SKIN_MOUNTED__ = true;
+  ensureSonnerStyles();
 
   const videoHost = document.createElement('div');
   videoHost.id = 'bili-skin-video-host';
