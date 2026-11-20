@@ -150,7 +150,7 @@ export const DEFAULT_SKIN_SETTINGS: SkinSettings = {
   dim: 0.25,
   fit: 'full',
   muted: true,
-  autoplay: true,
+  autoplay: false,
   quality: 80,
   hiddenMode: false,
   cropBars: true,

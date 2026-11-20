@@ -201,6 +201,9 @@ export function Hud({ config, videoHost }: HudProps) {
   const [loading, setLoading] = useState(false);
   const [buffering, setBuffering] = useState(false);
   const bufferingRef = useRef(false);
+  /** 首次加载后是否已经提示过“点击播放”，以及用户是否已经主动播放过 */
+  const readyPromptedRef = useRef(false);
+  const startedRef = useRef(false);
   const [error, setError] = useState<string | null>(null);
   const [panelPref] = useState<PanelPref>(readPanelPref);
   const [open, setOpen] = useState(panelPref === 'open');
@@ -384,6 +387,10 @@ export function Hud({ config, videoHost }: HudProps) {
       audioRef.current?.pause();
       bufferingRef.current = false;
       setBuffering(false);
+      readyPromptedRef.current = false;
+      startedRef.current = false;
+      toast.dismiss('bili-ready');
+      setAudioReady(false);
       setAudioSrc(null);
       mediaErrorRef.current = null;
       setLoading(true);
@@ -738,7 +745,7 @@ export function Hud({ config, videoHost }: HudProps) {
       video.addEventListener('loadedmetadata', onMetadata, { once: true });
     }
 
-    if (settingsRef.current.autoplay && visibleRef.current) {
+    if ((liveMode || settingsRef.current.autoplay) && visibleRef.current) {
       void video.play()?.catch((error) => {
         // VS Code/Chromium 可能阻止带声音的自动播放；提醒用户点一下。
         if (settingsRef.current.muted === false) {
@@ -748,7 +755,52 @@ export function Hud({ config, videoHost }: HudProps) {
     }
 
     return () => video.removeEventListener('loadedmetadata', onMetadata);
-  }, [srcUrl, applyMediaSettings, notePlayError]);
+  }, [srcUrl, liveMode, applyMediaSettings, notePlayError]);
+
+  // 点播首次加载不自动播放：视频和音轨都准备好了，提示用户点播放。
+  useEffect(() => {
+    if (
+      !visible ||
+      liveMode ||
+      !srcUrl ||
+      playing ||
+      buffering ||
+      readyPromptedRef.current ||
+      startedRef.current
+    ) {
+      return;
+    }
+    const timer = window.setInterval(() => {
+      const video = videoRef.current;
+      if (!video || !video.paused || video.error || !info) {
+        return;
+      }
+      const enough = video.readyState >= 3 || bufferedAhead(video) >= 2;
+      const audioOk = !info.audioUrl || audioReady;
+      if (!enough || !audioOk) {
+        return;
+      }
+      readyPromptedRef.current = true;
+      window.clearInterval(timer);
+      toast(info.audioUrl ? '音频已就绪' : '视频已就绪', {
+        id: 'bili-ready',
+        description: '点击右下角播放按钮开始播放',
+        duration: 8000,
+        action: {
+          label: '播放',
+          onClick: () => {
+            const current = videoRef.current;
+            if (!current) {
+              return;
+            }
+            startedRef.current = true;
+            void current.play().catch(() => undefined);
+          },
+        },
+      });
+    }, 500);
+    return () => window.clearInterval(timer);
+  }, [visible, liveMode, srcUrl, playing, buffering, info, audioReady]);
 
   // 环境检查：没装 ffmpeg 时视频没声音，Windows 上很常见
   useEffect(() => {
@@ -2298,6 +2350,8 @@ export function Hud({ config, videoHost }: HudProps) {
             }
           }}
           onPlay={() => {
+            startedRef.current = true;
+            toast.dismiss('bili-ready');
             applyMediaSettings();
             setPlaying(true);
             syncAudio();

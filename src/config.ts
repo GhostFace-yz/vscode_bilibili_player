@@ -23,7 +23,7 @@ export function getSettings(): BilibiliPlayerSettings {
     dim: clamp(config.get<number>('dim', 0.25), 0, 1),
     fit: normalizeFit(config.get<string>('fit', 'full')),
     muted: config.get<boolean>('muted', true),
-    autoplay: config.get<boolean>('autoplay', true),
+    autoplay: config.get<boolean>('autoplay', false),
     quality: normalizeQuality(config.get<number>('quality', 80)),
     hiddenMode: config.get<boolean>('hiddenMode', false),
     cropBars: config.get<boolean>('cropBars', true),

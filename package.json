@@ -166,8 +166,8 @@
         },
         "bilibiliPlayer.autoplay": {
           "type": "boolean",
-          "default": true,
-          "description": "打开后自动播放。",
+          "default": false,
+          "description": "点播加载完成后自动播放（直播始终直接播放）。",
           "order": 7
         },
         "bilibiliPlayer.quality": {
