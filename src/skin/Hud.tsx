@@ -66,6 +66,19 @@ interface HudProps {
 const QUALITY_CHOICES = [16, 32, 64, 74, 80, 112, 116, 120];
 /** 胶囊 width 过渡时长，必须和 tailwind.css 里 .bili-pill 的 transition 一致 */
 const PILL_MOTION_MS = 760;
+/** 卡顿后至少缓冲到这么多秒再继续播放，避免刚恢复又立刻卡住 */
+const BUFFER_AHEAD_SECONDS = 2.5;
+
+/** 当前播放位置后面还有多少秒已缓冲的数据。 */
+function bufferedAhead(video: HTMLVideoElement): number {
+  const time = video.currentTime;
+  for (let i = 0; i < video.buffered.length; i += 1) {
+    if (video.buffered.start(i) <= time + 0.1 && time <= video.buffered.end(i)) {
+      return video.buffered.end(i) - time;
+    }
+  }
+  return 0;
+}
 /** 小屏视频框的最小宽度（px） */
 const MINI_MIN_WIDTH = 120;
 
@@ -186,6 +199,8 @@ export function Hud({ config, videoHost }: HudProps) {
   const [audioReady, setAudioReady] = useState(false);
   const [audioBlocked, setAudioBlocked] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [buffering, setBuffering] = useState(false);
+  const bufferingRef = useRef(false);
   const [error, setError] = useState<string | null>(null);
   const [panelPref] = useState<PanelPref>(readPanelPref);
   const [open, setOpen] = useState(panelPref === 'open');
@@ -367,6 +382,8 @@ export function Hud({ config, videoHost }: HudProps) {
       audioWavTried.current = false;
       audioFallbackRef.current = false;
       audioRef.current?.pause();
+      bufferingRef.current = false;
+      setBuffering(false);
       setAudioSrc(null);
       mediaErrorRef.current = null;
       setLoading(true);
@@ -991,6 +1008,17 @@ export function Hud({ config, videoHost }: HudProps) {
         return;
       }
 
+      // 卡顿/缓冲中：不要让独立音轨继续往前走，否则 250ms 同步会把
+      // audio.currentTime 反复 seek 回 video.currentTime，听感就是一小段音频在循环。
+      if (bufferingRef.current) {
+        audio.pause();
+        return;
+      }
+      if (video.seeking || video.readyState < 2 || bufferedAhead(video) < 0.2) {
+        audio.pause();
+        return;
+      }
+
       if (audio.readyState < 1 || audio.seeking) {
         return;
       }
@@ -1029,6 +1057,51 @@ export function Hud({ config, videoHost }: HudProps) {
     },
     [applyMediaSettings, notePlayError],
   );
+
+  /** 数据够了再恢复；不够就让 video 保持暂停，避免“播 0.2s 又卡”的抖动。 */
+  const tryResume = useCallback(() => {
+    const video = videoRef.current;
+    if (!video || !bufferingRef.current || video.seeking || video.error) {
+      return;
+    }
+    const ahead = bufferedAhead(video);
+    const remaining = Number.isFinite(video.duration)
+      ? Math.max(0, video.duration - video.currentTime)
+      : Number.POSITIVE_INFINITY;
+    // 直播的缓冲窗口本来就短，等 2.5s 会一直起不来。
+    const target = liveMode ? 1.2 : BUFFER_AHEAD_SECONDS;
+    const need = Math.min(target, Math.max(0.6, remaining - 0.4));
+    if (ahead < need && video.readyState < 4) {
+      return;
+    }
+    bufferingRef.current = false;
+    setBuffering(false);
+    void video.play().catch(() => {
+      // 自动播放限制/用户刚暂停：回到暂停态，下一轮再试
+    });
+  }, [liveMode]);
+
+  /** 卡住：暂停 video 和音轨，显示 spinner，等缓冲区够再恢复。 */
+  const handleWaiting = useCallback(() => {
+    const video = videoRef.current;
+    // 预加载/用户暂停时也会触发 waiting，别把它当成卡顿。
+    if (!video || video.paused || video.ended || video.error) {
+      return;
+    }
+    bufferingRef.current = true;
+    setBuffering(true);
+    audioRef.current?.pause();
+    video.pause();
+  }, []);
+
+  // 缓冲期间 progress 不一定及时，额外轮询一次缓冲区。
+  useEffect(() => {
+    if (!buffering) {
+      return;
+    }
+    const timer = window.setInterval(() => tryResume(), 400);
+    return () => window.clearInterval(timer);
+  }, [buffering, tryResume]);
 
   // timeupdate 只有 ~4Hz，额外用 250ms 轮询兜住漂移/暂停边界。
   useEffect(() => {
@@ -2229,10 +2302,18 @@ export function Hud({ config, videoHost }: HudProps) {
             setPlaying(true);
             syncAudio();
           }}
-          onPlaying={() => syncAudio()}
+          onPlaying={() => {
+            bufferingRef.current = false;
+            setBuffering(false);
+            syncAudio();
+          }}
           onPause={(event) => {
             setPlaying(false);
             setAudioBlocked(false);
+            // 卡顿导致的 pause 由 handleWaiting 负责，不要把 buffering 清掉。
+            if (!bufferingRef.current) {
+              setBuffering(false);
+            }
             const audio = audioRef.current;
             if (audio) {
               audio.pause();
@@ -2244,9 +2325,19 @@ export function Hud({ config, videoHost }: HudProps) {
             }
           }}
           onSeeking={() => audioRef.current?.pause()}
-          onSeeked={() => syncAudio()}
-          onWaiting={() => audioRef.current?.pause()}
-          onEnded={() => audioRef.current?.pause()}
+          onSeeked={() => {
+            tryResume();
+            syncAudio();
+          }}
+          onWaiting={handleWaiting}
+          onStalled={handleWaiting}
+          onProgress={() => tryResume()}
+          onCanPlay={() => tryResume()}
+          onEnded={() => {
+            bufferingRef.current = false;
+            setBuffering(false);
+            audioRef.current?.pause();
+          }}
           onError={handleVideoError}
         />
       ) : null}
@@ -2283,6 +2374,13 @@ export function Hud({ config, videoHost }: HudProps) {
         />
       ) : null}
       <div className="bili-dim" />
+      {buffering && srcUrl && videoBox ? (
+        <div className="bili-buffer" style={videoBox}>
+          <span className="bili-buffer-ring">
+            <span className="bili-spinner" />
+          </span>
+        </div>
+      ) : null}
     </div>
   );
 
@@ -2846,13 +2944,15 @@ export function Hud({ config, videoHost }: HudProps) {
               <button
                 type="button"
                 className="bili-play-btn bili-play-btn-small bili-pill-play"
-                aria-label={pillCollapsing ? '收起中' : busy ? '加载中' : playing ? '暂停' : '播放'}
-                aria-busy={busy}
-                onClick={pillCollapsing ? undefined : togglePlay}
+                aria-label={
+                  pillCollapsing ? '收起中' : buffering ? '缓冲中' : busy ? '加载中' : playing ? '暂停' : '播放'
+                }
+                aria-busy={busy || buffering}
+                onClick={pillCollapsing || buffering ? undefined : togglePlay}
               >
                 {pillCollapsing ? (
                   <MoreHorizTwotone width={16} height={16} />
-                ) : busy ? (
+                ) : busy || buffering ? (
                   <span className="bili-spinner" />
                 ) : playing ? (
                   <PlayerPause width={13} height={13} />
@@ -2959,7 +3059,11 @@ export function Hud({ config, videoHost }: HudProps) {
                   pillExpandTimer.current = window.setTimeout(() => setPillExpanding(false), 800);
                 }}
               >
-                {busy ? <span className="bili-spinner" /> : <MoreHorizTwotone width={16} height={16} />}
+                {busy || buffering ? (
+                  <span className="bili-spinner" />
+                ) : (
+                  <MoreHorizTwotone width={16} height={16} />
+                )}
               </button>
             </div>
           </div>

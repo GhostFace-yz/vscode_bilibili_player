@@ -1209,6 +1209,27 @@
   transition: opacity 220ms ease;
 }
 
+/* 卡顿时的中央缓冲圈 */
+.bili-buffer {
+  position: absolute;
+  display: grid;
+  place-items: center;
+  pointer-events: none;
+  z-index: 1;
+}
+
+.bili-buffer-ring {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--bili-bg) 72%, transparent);
+  box-shadow: 0 8px 24px rgb(0 0 0 / 28%);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+}
+
 /* ---------- 让工作台透出视频 ---------- */
 
 body.bili-skin-on {
