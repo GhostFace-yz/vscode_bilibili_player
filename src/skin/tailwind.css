@@ -229,6 +229,37 @@
   }
 }
 
+/* 展开回宽胶囊时：宽度先长，三个点在最右侧反向转回，结束后再露出内容 */
+.bili-pill[data-expanding='true'] .bili-pill-content > :not(.bili-mini-btn) {
+  display: none;
+}
+
+.bili-pill[data-expanding='true'] .bili-pill-content {
+  justify-content: flex-end;
+}
+
+.bili-pill[data-expanding='true'] .bili-mini-btn {
+  display: inline-flex;
+}
+
+.bili-pill[data-expanding='true'] .bili-mini-btn svg {
+  animation: bili-mini-spin-reverse 760ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes bili-mini-spin-reverse {
+  from {
+    transform: rotate(360deg);
+  }
+  to {
+    transform: rotate(0deg);
+  }
+}
+
+.bili-pill-volume {
+  flex: 0 0 52px;
+  width: 52px;
+}
+
 /* ---------- shadcn Switch ---------- */
 
 .bili-switch {

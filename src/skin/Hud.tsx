@@ -96,7 +96,11 @@ export function Hud({ config, videoHost }: HudProps) {
   const [open, setOpen] = useState(true);
   const [hudHovered, setHudHovered] = useState(false);
   const [pillWide, setPillWide] = useState(false);
+  const [pillExpanding, setPillExpanding] = useState(false);
+  const [titleTruncated, setTitleTruncated] = useState(false);
   const pillExpandedAt = useRef(0);
+  const pillExpandTimer = useRef<number | undefined>(undefined);
+  const titleRef = useRef<HTMLSpanElement | null>(null);
   const [input, setInput] = useState('');
   const [playing, setPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
@@ -375,6 +379,8 @@ export function Hud({ config, videoHost }: HudProps) {
   // 面板展开时胶囊保持宽条；收起/迷你状态完全由按钮控制，不再跟随 hover。
   useEffect(() => {
     if (open) {
+      window.clearTimeout(pillExpandTimer.current);
+      setPillExpanding(false);
       setPillWide(true);
     }
   }, [open]);
@@ -612,6 +618,21 @@ export function Hud({ config, videoHost }: HudProps) {
     setAudioReady(false);
   }, [audioSrc]);
 
+  // 标题被截断时才挂原生 title，避免没截断也弹 tooltip。
+  useEffect(() => {
+    const element = titleRef.current;
+    if (!element) {
+      return;
+    }
+    const check = () => {
+      setTitleTruncated(element.scrollWidth > element.clientWidth + 1);
+    };
+    check();
+    const observer = new ResizeObserver(check);
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [info?.title, pillWide, pillExpanding, open]);
+
   // 从 DASH 切回原生 mp4 时，确保旧的独立音轨被彻底停掉。
   useEffect(() => {
     if (audioSrc) {
@@ -715,6 +736,7 @@ export function Hud({ config, videoHost }: HudProps) {
 
   useEffect(() => {
     return () => {
+      window.clearTimeout(pillExpandTimer.current);
       void testContextRef.current?.close().catch(() => undefined);
       testContextRef.current = null;
     };
@@ -1225,6 +1247,48 @@ export function Hud({ config, videoHost }: HudProps) {
     }
   };
 
+  const toggleMute = () => {
+    const next = !muted;
+    if (!next && volumeRef.current === 0) {
+      setVolume(0.8);
+      volumeRef.current = 0.8;
+    }
+    setMuted(next);
+    updateSettings({ muted: next });
+    const hasAudioTrack = Boolean(audioRef.current);
+    if (videoRef.current) {
+      videoRef.current.muted = next || hasAudioTrack;
+      videoRef.current.volume = volumeRef.current;
+    }
+    if (audioRef.current) {
+      audioRef.current.muted = next;
+      audioRef.current.volume = volumeRef.current;
+      if (!next) {
+        void audioRef.current.play().then(() => setAudioBlocked(false)).catch(notePlayError);
+      }
+    }
+    if (!next && videoRef.current && !videoRef.current.paused) {
+      void videoRef.current.play().then(() => setAudioBlocked(false)).catch(notePlayError);
+    }
+  };
+
+  const changeVolume = (next: number) => {
+    const nextMuted = next === 0;
+    setVolume(next);
+    volumeRef.current = next;
+    setMuted(nextMuted);
+    updateSettings({ muted: nextMuted });
+    const hasAudioTrack = Boolean(audioRef.current);
+    if (videoRef.current) {
+      videoRef.current.volume = next;
+      videoRef.current.muted = nextMuted || hasAudioTrack;
+    }
+    if (audioRef.current) {
+      audioRef.current.volume = next;
+      audioRef.current.muted = nextMuted;
+    }
+  };
+
   const playTestTone = () => {
     // 1) Web Audio：不经过 CSP/网络，直接验证 workbench 有没有音频输出。
     try {
@@ -1686,29 +1750,7 @@ export function Hud({ config, videoHost }: HudProps) {
                   className={`bili-icon-btn ${muted ? 'bili-muted' : ''}`}
                   title={muted ? '取消静音' : '静音'}
                   aria-label={muted ? '取消静音' : '静音'}
-                  onClick={() => {
-                    const next = !muted;
-                    if (!next && volumeRef.current === 0) {
-                      setVolume(0.8);
-                      volumeRef.current = 0.8;
-                    }
-                    setMuted(next);
-                    updateSettings({ muted: next });
-                    if (videoRef.current) {
-                      videoRef.current.muted = next;
-                      videoRef.current.volume = volumeRef.current;
-                    }
-                    if (audioRef.current) {
-                      audioRef.current.muted = next;
-                      audioRef.current.volume = volumeRef.current;
-                      if (!next) {
-                        void audioRef.current.play().then(() => setAudioBlocked(false)).catch(notePlayError);
-                      }
-                    }
-                    if (!next && videoRef.current && !videoRef.current.paused) {
-                      void videoRef.current.play().then(() => setAudioBlocked(false)).catch(notePlayError);
-                    }
-                  }}
+                  onClick={toggleMute}
                 >
                   <Volume width={15} height={15} />
                 </button>
@@ -1721,22 +1763,7 @@ export function Hud({ config, videoHost }: HudProps) {
                   value={muted ? 0 : volume}
                   style={rangeFill(muted ? 0 : volume, 0, 1)}
                   aria-label="音量"
-                  onChange={(event) => {
-                    const next = Number(event.target.value);
-                    const nextMuted = next === 0;
-                    setVolume(next);
-                    volumeRef.current = next;
-                    setMuted(nextMuted);
-                    updateSettings({ muted: nextMuted });
-                    if (videoRef.current) {
-                      videoRef.current.volume = next;
-                      videoRef.current.muted = nextMuted;
-                    }
-                    if (audioRef.current) {
-                      audioRef.current.volume = next;
-                      audioRef.current.muted = nextMuted;
-                    }
-                  }}
+                  onChange={(event) => changeVolume(Number(event.target.value))}
                 />
                 <div className="bp-ml-auto bp-flex bp-items-center bp-gap-1.5">
                   <button
@@ -1932,6 +1959,7 @@ export function Hud({ config, videoHost }: HudProps) {
             ref={pillRef}
             data-inactive={open}
             data-mini={!open && !pillWide}
+            data-expanding={pillExpanding}
             aria-hidden={open}
             inert={open}
           >
@@ -1951,18 +1979,33 @@ export function Hud({ config, videoHost }: HudProps) {
                   <PlayerPlay width={13} height={13} />
                 )}
               </button>
-              <span className="bp-min-w-0 bp-flex-1 bp-truncate bp-text-[12px] bili-text">
-                {info?.title ?? 'B站视频皮肤'}
-              </span>
               <button
                 type="button"
-                className="bili-icon-btn"
-                title="收起到迷你胶囊"
-                aria-label="收起到迷你胶囊"
-                onClick={() => setPillWide(false)}
+                className={`bili-icon-btn ${muted ? 'bili-muted' : ''}`}
+                title={muted ? '取消静音' : '静音'}
+                aria-label={muted ? '取消静音' : '静音'}
+                onClick={toggleMute}
               >
-                <ChevronRight20Filled width={14} height={14} />
+                <Volume width={14} height={14} />
               </button>
+              <input
+                className="bili-range bili-pill-volume"
+                type="range"
+                min={0}
+                max={1}
+                step={0.05}
+                value={muted ? 0 : volume}
+                style={rangeFill(muted ? 0 : volume, 0, 1)}
+                aria-label="音量"
+                onChange={(event) => changeVolume(Number(event.target.value))}
+              />
+              <span
+                ref={titleRef}
+                title={titleTruncated ? (info?.title ?? 'B站视频皮肤') : undefined}
+                className="bp-min-w-0 bp-flex-1 bp-truncate bp-text-[12px] bili-text"
+              >
+                {info?.title ?? 'B站视频皮肤'}
+              </span>
               <button
                 type="button"
                 className="bili-icon-btn"
@@ -1989,6 +2032,19 @@ export function Hud({ config, videoHost }: HudProps) {
               </button>
               <button
                 type="button"
+                className="bili-icon-btn"
+                title="收起到迷你胶囊"
+                aria-label="收起到迷你胶囊"
+                onClick={() => {
+                  window.clearTimeout(pillExpandTimer.current);
+                  setPillExpanding(false);
+                  setPillWide(false);
+                }}
+              >
+                <ChevronRight20Filled width={14} height={14} />
+              </button>
+              <button
+                type="button"
                 className="bili-play-btn bili-play-btn-small bili-mini-btn"
                 title={busy ? '加载中' : '展开控制条'}
                 aria-label={busy ? '加载中' : '展开控制条'}
@@ -1996,6 +2052,9 @@ export function Hud({ config, videoHost }: HudProps) {
                 onClick={() => {
                   pillExpandedAt.current = Date.now();
                   setPillWide(true);
+                  setPillExpanding(true);
+                  window.clearTimeout(pillExpandTimer.current);
+                  pillExpandTimer.current = window.setTimeout(() => setPillExpanding(false), 800);
                 }}
               >
                 {busy ? <span className="bili-spinner" /> : <MoreHorizTwotone width={16} height={16} />}
