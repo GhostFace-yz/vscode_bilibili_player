@@ -235,6 +235,16 @@
   display: none;
 }
 
+/*
+ * 收起动画：保持宽胶囊布局（padding 5px），只把 width 收到 40px，
+ * 内容被 overflow 从左侧裁掉，最后再切到迷你按钮。
+ * 40px = 1px 边框 + 5px padding + 28px 按钮 + 5px padding + 1px 边框，
+ * 所以结束时播放键正好在迷你按钮的位置，切换不会跳。
+ */
+.bili-pill[data-collapsing='true'] {
+  width: 40px;
+}
+
 /* 迷你态只显示 MoreHoriz（Tabler Dots）按钮；宽胶囊里隐藏它 */
 .bili-pill .bili-mini-btn {
   display: none;

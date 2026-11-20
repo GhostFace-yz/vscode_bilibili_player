@@ -64,6 +64,8 @@ interface HudProps {
 }
 
 const QUALITY_CHOICES = [16, 32, 64, 74, 80, 112, 116, 120];
+/** 胶囊 width 过渡时长，必须和 tailwind.css 里 .bili-pill 的 transition 一致 */
+const PILL_MOTION_MS = 760;
 /** 小屏视频框的最小宽度（px） */
 const MINI_MIN_WIDTH = 120;
 
@@ -190,8 +192,10 @@ export function Hud({ config, videoHost }: HudProps) {
   const [hudHovered, setHudHovered] = useState(false);
   const [pillWide, setPillWide] = useState(false);
   const [pillExpanding, setPillExpanding] = useState(false);
+  const [pillCollapsing, setPillCollapsing] = useState(false);
   const pillExpandedAt = useRef(0);
   const pillExpandTimer = useRef<number | undefined>(undefined);
+  const pillCollapseTimer = useRef<number | undefined>(undefined);
   const pillTitleWrapRef = useRef<HTMLSpanElement | null>(null);
   const pillTitleRef = useRef<HTMLSpanElement | null>(null);
   const titleTimeline = useRef<gsap.core.Timeline | null>(null);
@@ -509,7 +513,9 @@ export function Hud({ config, videoHost }: HudProps) {
   useEffect(() => {
     if (open) {
       window.clearTimeout(pillExpandTimer.current);
+      window.clearTimeout(pillCollapseTimer.current);
       setPillExpanding(false);
+      setPillCollapsing(false);
       setPillWide(true);
     }
   }, [open]);
@@ -1041,6 +1047,7 @@ export function Hud({ config, videoHost }: HudProps) {
   useEffect(() => {
     return () => {
       window.clearTimeout(pillExpandTimer.current);
+      window.clearTimeout(pillCollapseTimer.current);
       window.clearTimeout(errorRetryTimer.current);
       titleTimeline.current?.kill();
     };
@@ -1339,6 +1346,24 @@ export function Hud({ config, videoHost }: HudProps) {
     },
     { scope: hudRootRef, dependencies: [loginOpen], revertOnUpdate: true },
   );
+
+  /**
+   * 宽胶囊 → 迷你胶囊：保持宽胶囊内容，宽度从右往左收缩、内容被裁掉，
+   * 动画结束后再切换到迷你按钮（和展开动画互为逆过程）。
+   */
+  const collapsePill = useCallback(() => {
+    window.clearTimeout(pillExpandTimer.current);
+    setPillExpanding(false);
+    if (!pillWide || pillCollapsing) {
+      return;
+    }
+    setPillCollapsing(true);
+    window.clearTimeout(pillCollapseTimer.current);
+    pillCollapseTimer.current = window.setTimeout(() => {
+      setPillCollapsing(false);
+      setPillWide(false);
+    }, PILL_MOTION_MS);
+  }, [pillWide, pillCollapsing]);
 
   /**
    * 胶囊 → 面板：先把面板压成胶囊大小并模糊内容，再放大到完整尺寸并解除模糊。
@@ -2812,6 +2837,7 @@ export function Hud({ config, videoHost }: HudProps) {
             ref={pillRef}
             data-inactive={open}
             data-mini={!open && !pillWide}
+            data-collapsing={pillCollapsing}
             data-expanding={pillExpanding}
             aria-hidden={open}
             inert={open}
@@ -2911,11 +2937,7 @@ export function Hud({ config, videoHost }: HudProps) {
                 className="bili-icon-btn"
                 title="收起到迷你胶囊"
                 aria-label="收起到迷你胶囊"
-                onClick={() => {
-                  window.clearTimeout(pillExpandTimer.current);
-                  setPillExpanding(false);
-                  setPillWide(false);
-                }}
+                onClick={collapsePill}
               >
                 <ChevronRight20Filled width={14} height={14} />
               </button>
@@ -2927,6 +2949,8 @@ export function Hud({ config, videoHost }: HudProps) {
                 aria-busy={busy}
                 onClick={() => {
                   pillExpandedAt.current = Date.now();
+                  window.clearTimeout(pillCollapseTimer.current);
+                  setPillCollapsing(false);
                   setPillWide(true);
                   setPillExpanding(true);
                   window.clearTimeout(pillExpandTimer.current);
