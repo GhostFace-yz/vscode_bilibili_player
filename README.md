@@ -118,8 +118,9 @@ VS Code 自带的 `libffmpeg` 没有 AAC 解码器（只有 mp3 / flac / vorbis 
 | `bilibiliPlayer.opacity` | `0.5` | 视频层不透明度 |
 | `bilibiliPlayer.blur` | `2` | 视频模糊半径（px） |
 | `bilibiliPlayer.dim` | `0.25` | 暗化层强度；使用当前编辑器背景色，100% 时完全回到原编辑区颜色 |
-| `bilibiliPlayer.fit` | `full` | `full`（完整：按宽高比完整显示）/ `mini`（小屏，暂未实现） |
+| `bilibiliPlayer.fit` | `full` | `full`（完整：按宽高比完整显示）/ `mini`（小屏：编辑区里的可拖动小窗口） |
 | `bilibiliPlayer.cropBars` | `true` | 移除黑边：用 ffmpeg 探测画面真实宽高比后裁掉片源自带的黑边 |
+| `bilibiliPlayer.miniRect` | `{x:0.62,y:0.55,w:0.32}` | 小屏窗口的位置/宽度（相对编辑区可用区域的 0-1 比例，高度按宽高比算） |
 | `bilibiliPlayer.muted` | `true` | 静音播放 |
 | `bilibiliPlayer.autoplay` | `true` | 自动播放 |
 | `bilibiliPlayer.quality` | `80` | 期望清晰度（未登录通常回落到 720P/480P） |

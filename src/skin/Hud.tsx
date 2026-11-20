@@ -6,6 +6,7 @@ import {
   useRef,
   useState,
   type CSSProperties,
+  type PointerEvent as ReactPointerEvent,
 } from 'react';
 import { createPortal } from 'react-dom';
 import { gsap } from 'gsap';
@@ -14,6 +15,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Minus,
+  PictureInPicture,
   PlayerPause,
   PlayerPlay,
   Qrcode,
@@ -29,6 +31,7 @@ import { Toaster, toast } from 'sonner';
 import { parseVideoInput } from '../bilibili/parse';
 import type {
   LoginQr,
+  MiniRect,
   PlayInfo,
   SkinConfig,
   SkinSettings,
@@ -56,6 +59,19 @@ interface HudProps {
 }
 
 const QUALITY_CHOICES = [16, 32, 64, 74, 80, 112, 116, 120];
+/** 小屏视频框的最小宽度（px） */
+const MINI_MIN_WIDTH = 120;
+/** 小屏设置里的预览最大高度（px），超过就整体缩小 */
+const MINI_PREVIEW_MAX_HEIGHT = 230;
+
+type MiniBoxRect = { x: number; y: number; w: number; h: number };
+
+function clampNumber(value: number, min: number, max: number): number {
+  if (!Number.isFinite(value)) {
+    return min;
+  }
+  return Math.min(Math.max(value, min), max);
+}
 const REDUCED_MOTION =
   typeof window !== 'undefined' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
@@ -88,6 +104,21 @@ export function Hud({ config, videoHost }: HudProps) {
     bottom: number;
   } | null>(null);
   const [topInset, setTopInset] = useState(0);
+  const [minimapWidth, setMinimapWidth] = useState(0);
+  const [miniEditing, setMiniEditing] = useState(false);
+  const [miniDraft, setMiniDraft] = useState<MiniBoxRect | null>(null);
+  const [miniPreviewWidth, setMiniPreviewWidth] = useState(0);
+  const miniDraftRef = useRef<MiniBoxRect | null>(null);
+  miniDraftRef.current = miniDraft;
+  const miniGesture = useRef<{
+    mode: 'move' | 'resize';
+    startX: number;
+    startY: number;
+    rect: MiniBoxRect;
+    scale: number;
+  } | null>(null);
+  const miniBoxRef = useRef<HTMLDivElement | null>(null);
+  const miniPreviewRef = useRef<HTMLDivElement | null>(null);
   const [videoRatio, setVideoRatio] = useState(0);
   const [contentAspect, setContentAspect] = useState(0);
   const [notice, setNotice] = useState<string | null>(null);
@@ -605,6 +636,29 @@ export function Hud({ config, videoHost }: HudProps) {
     return () => video.removeEventListener('loadedmetadata', onMetadata);
   }, [srcUrl, applyMediaSettings, notePlayError]);
 
+  // 只有小屏模式才需要小屏设置面板
+  useEffect(() => {
+    if (settings.fit !== 'mini') {
+      setMiniEditing(false);
+      setMiniDraft(null);
+    }
+  }, [settings.fit]);
+
+  // 小屏预览的可用宽度跟随面板宽度
+  useEffect(() => {
+    if (!miniEditing) {
+      return;
+    }
+    const element = miniPreviewRef.current;
+    if (!element) {
+      return;
+    }
+    setMiniPreviewWidth(element.clientWidth);
+    const observer = new ResizeObserver(() => setMiniPreviewWidth(element.clientWidth));
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [miniEditing]);
+
   // 移除黑边：让扩展宿主用 ffmpeg 探测一次画面的真实宽高比（按 bvid:cid 缓存）。
   // 关闭时不用探测，直接按 <video> 自带的 videoWidth / videoHeight 排布。
   useEffect(() => {
@@ -972,6 +1026,10 @@ export function Hud({ config, videoHost }: HudProps) {
         right = Math.min(right, minimapRect.left);
       }
       const width = Math.max(2, right - rect.left);
+      setMinimapWidth((previous) => {
+        const next = Math.max(0, Math.round(rect.right - right));
+        return Math.abs(previous - next) < 0.5 ? previous : next;
+      });
 
       setEditorBounds((previous) => {
         if (
@@ -1591,7 +1649,8 @@ export function Hud({ config, videoHost }: HudProps) {
 
   // 隐藏播放模式：只有鼠标停在 HUD 上才应用用户设置的透明度/模糊/暗化；
   // 移开时 opacity=0、dim=1（暗化层完全盖住视频），编辑区回到正常颜色。
-  const revealVideo = !settings.hiddenMode || hudHovered;
+  // 调小屏位置时临时显示视频，方便边拖边看效果（否则隐藏播放模式下看不到）
+  const revealVideo = !settings.hiddenMode || hudHovered || (miniEditing && settings.fit === 'mini');
   const layerStyle = {
     left: editorBounds ? `${editorBounds.left}px` : '0px',
     top: editorBounds ? `${editorBounds.top}px` : '0px',
@@ -1611,12 +1670,64 @@ export function Hud({ config, videoHost }: HudProps) {
    * - 顶部让出标签栏/面包屑的高度，横向居中，剩下的区域露出编辑器背景色
    */
   const ratio = contentAspect > 0 ? contentAspect : videoRatio > 0 ? videoRatio : 16 / 9;
+  const miniAvailableWidth = editorBounds ? Math.max(2, editorBounds.width) : 0;
+  const miniAvailableHeight = editorBounds ? Math.max(2, editorBounds.height - topInset) : 0;
+  /** 预览里要一起画出来的完整编辑区（含 minimap 色块） */
+  const miniStageWidth = miniAvailableWidth + minimapWidth;
+  const miniStageHeight = editorBounds ? Math.max(2, editorBounds.height) : 0;
+
+  // 小屏框：设置里存归一化位置，这里换算成编辑区内的像素并夹在可用区域里
+  const miniRectFromSettings: MiniBoxRect | null = editorBounds
+    ? (() => {
+        const preferred = clampNumber(
+          settings.miniRect.w * miniAvailableWidth,
+          Math.min(MINI_MIN_WIDTH, miniAvailableWidth),
+          miniAvailableWidth,
+        );
+        const width = Math.max(2, Math.min(preferred, miniAvailableHeight * ratio));
+        const height = width / ratio;
+        return {
+          w: width,
+          h: height,
+          x: clampNumber(
+            settings.miniRect.x * miniAvailableWidth,
+            0,
+            Math.max(0, miniAvailableWidth - width),
+          ),
+          y:
+            topInset +
+            clampNumber(
+              settings.miniRect.y * miniAvailableHeight,
+              0,
+              Math.max(0, miniAvailableHeight - height),
+            ),
+        };
+      })()
+    : null;
+  const miniActiveRect = miniDraft ?? miniRectFromSettings;
+
+  const miniPreviewScale =
+    miniEditing && miniPreviewWidth > 0 && miniStageWidth > 0 && miniStageHeight > 0
+      ? Math.min(miniPreviewWidth / miniStageWidth, MINI_PREVIEW_MAX_HEIGHT / miniStageHeight)
+      : 0;
+
   const videoBox = (() => {
     if (!editorBounds) {
       return null;
     }
-    const availableWidth = editorBounds.width;
-    const availableHeight = Math.max(2, editorBounds.height - topInset);
+    if (settings.fit === 'mini') {
+      if (!miniActiveRect) {
+        return null;
+      }
+      return {
+        left: Math.round(miniActiveRect.x),
+        top: Math.round(miniActiveRect.y),
+        width: Math.max(2, Math.round(miniActiveRect.w)),
+        height: Math.max(2, Math.round(miniActiveRect.h)),
+      };
+    }
+    const availableWidth = miniAvailableWidth;
+    const availableHeight = miniAvailableHeight;
     let width = availableWidth;
     let height = width / ratio;
     if (height > availableHeight) {
@@ -1630,6 +1741,82 @@ export function Hud({ config, videoHost }: HudProps) {
       height: Math.max(2, Math.round(height)),
     };
   })();
+
+  // 小屏框：拖动移动，左下角缩放（右上角锚定，宽高比锁定）
+  const startMiniGesture =
+    (mode: 'move' | 'resize') => (event: ReactPointerEvent<HTMLElement>) => {
+      if (!miniActiveRect || !editorBounds) {
+        return;
+      }
+      event.preventDefault();
+      event.stopPropagation();
+      miniGesture.current = {
+        mode,
+        startX: event.clientX,
+        startY: event.clientY,
+        rect: { ...miniActiveRect },
+        scale: miniPreviewScale > 0 ? miniPreviewScale : 1,
+      };
+      try {
+        miniBoxRef.current?.setPointerCapture(event.pointerId);
+      } catch {
+        // 合成事件/指针已释放时可能失败，不影响后续 pointermove
+      }
+      setMiniDraft({ ...miniActiveRect });
+    };
+
+  const moveMiniGesture = (event: ReactPointerEvent<HTMLElement>) => {
+    const gesture = miniGesture.current;
+    if (!gesture || !editorBounds) {
+      return;
+    }
+    const dx = (event.clientX - gesture.startX) / gesture.scale;
+    const dy = (event.clientY - gesture.startY) / gesture.scale;
+    const minTop = topInset;
+    const maxBottom = topInset + miniAvailableHeight;
+
+    if (gesture.mode === 'move') {
+      setMiniDraft({
+        ...gesture.rect,
+        x: clampNumber(gesture.rect.x + dx, 0, Math.max(0, miniAvailableWidth - gesture.rect.w)),
+        y: clampNumber(gesture.rect.y + dy, minTop, Math.max(minTop, maxBottom - gesture.rect.h)),
+      });
+      return;
+    }
+
+    // 缩放：右上角不动，宽度变化时高度按比例跟着变
+    const right = gesture.rect.x + gesture.rect.w;
+    const top = gesture.rect.y;
+    let width = gesture.rect.w - dx;
+    width = Math.min(width, right);
+    width = Math.min(width, (maxBottom - top) * ratio);
+    width = Math.max(Math.min(MINI_MIN_WIDTH, miniAvailableWidth), width);
+    setMiniDraft({ x: right - width, y: top, w: width, h: width / ratio });
+  };
+
+  const finishMiniGesture = (event: ReactPointerEvent<HTMLElement>) => {
+    if (!miniGesture.current) {
+      return;
+    }
+    miniGesture.current = null;
+    try {
+      miniBoxRef.current?.releasePointerCapture(event.pointerId);
+    } catch {
+      // 指针已经不存在时忽略
+    }
+    const rect = miniDraftRef.current ?? miniActiveRect;
+    setMiniDraft(null);
+    if (!rect) {
+      return;
+    }
+    updateSettings({
+      miniRect: {
+        x: clampNumber(rect.x / miniAvailableWidth, 0, 1),
+        y: clampNumber((rect.y - topInset) / miniAvailableHeight, 0, 1),
+        w: clampNumber(rect.w / miniAvailableWidth, 0.05, 1),
+      } satisfies MiniRect,
+    });
+  };
 
   const qualityLabel =
     info?.qualities.find((quality) => quality.qn === info.quality)?.desc ??
@@ -1874,6 +2061,18 @@ export function Hud({ config, videoHost }: HudProps) {
                     </>
                   ) : (
                     <>
+                  {settings.fit === 'mini' ? (
+                    <button
+                      type="button"
+                      className="bili-icon-btn"
+                      title="小屏设置"
+                      aria-label="小屏设置"
+                      aria-pressed={miniEditing}
+                      onClick={() => setMiniEditing((value) => !value)}
+                    >
+                      <PictureInPicture width={13} height={13} />
+                    </button>
+                  ) : null}
                   <button
                     type="button"
                     className="bili-icon-btn"
@@ -1902,10 +2101,8 @@ export function Hud({ config, videoHost }: HudProps) {
                     value={settings.fit}
                     onValueChange={(value) => {
                       const fit = value as SkinSettings['fit'];
-                      if (fit === 'mini') {
-                        toast.info('小屏模式还在做，先按完整模式显示');
-                      }
                       updateSettings({ fit });
+                      setMiniEditing(fit === 'mini');
                     }}
                   >
                     <SelectTrigger className="bili-select-trigger bili-fit-trigger" aria-label="显示方式">
@@ -1921,6 +2118,113 @@ export function Hud({ config, videoHost }: HudProps) {
                 </div>
               </div>
 
+              {miniEditing ? (
+                !miniActiveRect ? (
+                  <div className="bp-flex bp-items-center bili-divider-t bp-pt-2.5">
+                    <span className="bili-skeleton bili-skeleton-line" style={{ width: '60%' }} />
+                  </div>
+                ) : (
+                  <div className="bp-flex bp-flex-col bp-gap-2 bili-divider-t bp-pt-2.5">
+                    <div className="bp-flex bp-items-center bp-gap-2">
+                      <span className="bp-text-[12px]">小屏位置</span>
+                      <span className="bp-text-[10px] bili-muted">拖动移动 · 左下角缩放</span>
+                      <div className="bp-ml-auto bp-flex bp-items-center bp-gap-1">
+                        <Button
+                          variant="link"
+                          size="sm"
+                          className="bili-link-btn"
+                          onClick={() => updateSettings({ miniRect: DEFAULT_SKIN_SETTINGS.miniRect })}
+                        >
+                          重置
+                        </Button>
+                        <button
+                          type="button"
+                          className="bili-icon-btn"
+                          title="退出小屏设置"
+                          aria-label="退出小屏设置"
+                          onClick={() => setMiniEditing(false)}
+                        >
+                          <X width={14} height={14} />
+                        </button>
+                      </div>
+                    </div>
+                    <div className="bili-mini-preview" ref={miniPreviewRef}>
+                      {miniPreviewScale > 0 ? (
+                        <div
+                          className="bili-mini-stage"
+                          style={{
+                            width: Math.round(miniStageWidth * miniPreviewScale),
+                            height: Math.round(miniStageHeight * miniPreviewScale),
+                          }}
+                        >
+                          <div
+                            className="bili-mini-canvas"
+                            style={{
+                              width: miniStageWidth,
+                              height: miniStageHeight,
+                              transform: `scale(${miniPreviewScale})`,
+                            }}
+                          >
+                            <div
+                              className="bili-mini-forbidden bili-mini-forbidden-top"
+                              style={{ height: topInset }}
+                            />
+                            <div
+                              className="bili-mini-forbidden bili-mini-forbidden-side"
+                              style={{ width: minimapWidth }}
+                            />
+                            {info?.cover ? (
+                              <img
+                                className="bili-mini-thumb"
+                                src={info.cover}
+                                alt=""
+                                referrerPolicy="no-referrer"
+                                style={{
+                                  left: miniActiveRect.x,
+                                  top: miniActiveRect.y,
+                                  width: miniActiveRect.w,
+                                  height: miniActiveRect.h,
+                                }}
+                              />
+                            ) : null}
+                            <div
+                              ref={miniBoxRef}
+                              className="bili-mini-box"
+                              style={{
+                                borderWidth: 2 / (miniPreviewScale || 1),
+                                left: miniActiveRect.x,
+                                top: miniActiveRect.y,
+                                width: miniActiveRect.w,
+                                height: miniActiveRect.h,
+                              }}
+                              onPointerDown={startMiniGesture('move')}
+                              onPointerMove={moveMiniGesture}
+                              onPointerUp={finishMiniGesture}
+                              onPointerCancel={finishMiniGesture}
+                            >
+                              <span
+                                className="bili-mini-box-handle"
+                                style={{
+                                  width: 18 / (miniPreviewScale || 1),
+                                  height: 18 / (miniPreviewScale || 1),
+                                  left: -9 / (miniPreviewScale || 1),
+                                  bottom: -9 / (miniPreviewScale || 1),
+                                  borderWidth: 2 / (miniPreviewScale || 1),
+                                }}
+                                onPointerDown={startMiniGesture('resize')}
+                              />
+                            </div>
+                          </div>
+                        </div>
+                      ) : null}
+                    </div>
+                    <div className="bp-text-[10px] bili-muted">
+                      顶部标签栏/面包屑、右侧代码地图是禁入区，拖到边界会自动停住
+                    </div>
+                  </div>
+                )
+              ) : (
+                <>
               {!info ? (
                 <div className="bp-flex bp-items-center bili-divider-t bp-pt-2">
                   <span className="bili-skeleton bili-skeleton-episode" />
@@ -2039,6 +2343,8 @@ export function Hud({ config, videoHost }: HudProps) {
                   {loading ? '加载中' : '播放'}
                 </Button>
               </div>
+                </>
+              )}
 
               <div className="bp-flex bp-items-center bp-gap-2 bili-divider-t bp-pt-2">
                 <span className={`bili-dot ${online ? 'bili-dot-online' : 'bili-dot-offline'}`} />

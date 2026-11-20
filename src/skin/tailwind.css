@@ -860,6 +860,84 @@
   }
 }
 
+/* ---------- 小屏设置：编辑区缩略图 ---------- */
+
+.bili-mini-preview {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  min-height: 80px;
+}
+
+.bili-mini-stage {
+  position: relative;
+  overflow: hidden;
+  border: 1px solid var(--bili-border);
+  border-radius: 8px;
+  background: var(--vscode-editor-background, #1e1e1e);
+  box-shadow: inset 0 0 0 1px var(--vscode-editorWidget-shadow, transparent);
+}
+
+.bili-mini-canvas {
+  position: absolute;
+  top: 0;
+  left: 0;
+  transform-origin: top left;
+}
+
+.bili-mini-forbidden {
+  position: absolute;
+  pointer-events: none;
+}
+
+.bili-mini-forbidden-top {
+  top: 0;
+  right: 0;
+  left: 0;
+  background-color: var(--vscode-editorWarning-foreground, #cca700);
+  opacity: 0.22;
+}
+
+.bili-mini-forbidden-side {
+  top: 0;
+  right: 0;
+  bottom: 0;
+  background-color: var(--vscode-errorForeground, #f14c4c);
+  opacity: 0.22;
+}
+
+.bili-mini-thumb {
+  position: absolute;
+  object-fit: cover;
+  border-radius: 2px;
+  opacity: 0.85;
+}
+
+.bili-mini-box {
+  position: absolute;
+  box-sizing: border-box;
+  border: 2px solid var(--vscode-focusBorder, #007fd4);
+  border-radius: 3px;
+  background: color-mix(in srgb, var(--vscode-focusBorder, #007fd4) 12%, transparent);
+  cursor: grab;
+  touch-action: none;
+}
+
+.bili-mini-box:active {
+  cursor: grabbing;
+}
+
+.bili-mini-box-handle {
+  position: absolute;
+  box-sizing: border-box;
+  border: 2px solid var(--vscode-editor-background, #1e1e1e);
+  border-radius: 3px;
+  background: var(--vscode-focusBorder, #007fd4);
+  cursor: nesw-resize;
+  touch-action: none;
+}
+
 /* ---------- 滑杆 ---------- */
 
 #bili-skin-hud .bili-range {

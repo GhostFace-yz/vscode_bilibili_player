@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
-import type { FitMode, SkinSettings } from './shared/types';
+import type { FitMode, MiniRect, SkinSettings } from './shared/types';
+import { DEFAULT_SKIN_SETTINGS } from './shared/types';
 
 export interface BilibiliPlayerSettings extends SkinSettings {
   defaultVideo: string;
@@ -23,13 +24,15 @@ export function getSettings(): BilibiliPlayerSettings {
     quality: normalizeQuality(config.get<number>('quality', 80)),
     hiddenMode: config.get<boolean>('hiddenMode', false),
     cropBars: config.get<boolean>('cropBars', true),
+    miniRect: normalizeMiniRect(config.get<unknown>('miniRect')),
     useIframePlayer: config.get<boolean>('useIframePlayer', false),
   };
 }
 
 export function getSkinSettings(): SkinSettings {
-  const { opacity, blur, dim, fit, muted, autoplay, quality, hiddenMode, cropBars } = getSettings();
-  return { opacity, blur, dim, fit, muted, autoplay, quality, hiddenMode, cropBars };
+  const { opacity, blur, dim, fit, muted, autoplay, quality, hiddenMode, cropBars, miniRect } =
+    getSettings();
+  return { opacity, blur, dim, fit, muted, autoplay, quality, hiddenMode, cropBars, miniRect };
 }
 
 /** 0.5.0 起 fit 只剩 full / mini，把老版本的 cover/contain/fill 写回 full，避免设置界面显示无效值。 */
@@ -72,6 +75,11 @@ export async function updateSkinSettings(patch: Partial<SkinSettings>): Promise<
   if (typeof patch.cropBars === 'boolean') {
     updates.push(config.update('cropBars', patch.cropBars, vscode.ConfigurationTarget.Global));
   }
+  if (patch.miniRect) {
+    updates.push(
+      config.update('miniRect', normalizeMiniRect(patch.miniRect), vscode.ConfigurationTarget.Global),
+    );
+  }
 
   await Promise.all(updates);
 }
@@ -81,6 +89,17 @@ function clamp(value: number, min: number, max: number): number {
     return min;
   }
   return Math.min(max, Math.max(min, value));
+}
+
+function normalizeMiniRect(value: unknown): MiniRect {
+  const raw = (value ?? {}) as Partial<MiniRect>;
+  const read = (input: unknown, fallback: number) =>
+    typeof input === 'number' && Number.isFinite(input) ? input : fallback;
+  return {
+    x: clamp(read(raw.x, DEFAULT_SKIN_SETTINGS.miniRect.x), 0, 1),
+    y: clamp(read(raw.y, DEFAULT_SKIN_SETTINGS.miniRect.y), 0, 1),
+    w: clamp(read(raw.w, DEFAULT_SKIN_SETTINGS.miniRect.w), 0.05, 1),
+  };
 }
 
 function normalizeFit(value: string): FitMode {

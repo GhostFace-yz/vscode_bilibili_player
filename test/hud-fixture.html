@@ -140,9 +140,29 @@
       display: flex;
       flex-direction: column;
     }
+    .breadcrumbs-control {
+      height: 22px;
+      padding: 0 12px;
+      display: flex;
+      align-items: center;
+      font-size: 11px;
+      color: var(--vscode-breadcrumb-foreground, var(--vscode-descriptionForeground));
+      background: var(--vscode-breadcrumb-background, transparent);
+    }
     .editor-container {
       flex: 1;
       display: flex;
+      position: relative;
+    }
+    .minimap {
+      width: 90px;
+      flex: 0 0 90px;
+      background: repeating-linear-gradient(
+        180deg,
+        color-mix(in srgb, var(--vscode-foreground) 18%, transparent) 0 2px,
+        transparent 2px 6px
+      );
+      margin-left: 8px;
     }
     .editor-instance {
       flex: 1;
@@ -206,6 +226,7 @@
       <div class="tabs-and-actions-container">extension.ts</div>
       <div class="content editor-group-container">
         <div class="editor-group-container">
+          <div class="breadcrumbs-control">38-earth-shaders › src › extension.ts</div>
           <div class="editor-container">
             <div class="editor-instance">
               <div class="monaco-editor">
@@ -229,6 +250,7 @@
 }
               </div>
             </div>
+            <div class="minimap"></div>
           </div>
         </div>
       </div>
@@ -246,6 +268,7 @@
     const wantLogin = params.get('login') === '1';
     const wantCollapsed = params.get('collapsed') === '1';
     const wantError = params.get('error') === '1';
+    const wantMini = params.get('mini') === '1';
 
     const svg = (body) => 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(body);
     const avatar = svg(
@@ -271,11 +294,13 @@
         opacity: 0.38,
         blur: 0,
         dim: 0.04,
-        fit: 'full',
+        fit: wantMini ? 'mini' : 'full',
         muted: false,
         autoplay: false,
         quality: 80,
         hiddenMode: false,
+        cropBars: false,
+        miniRect: { x: 0.62, y: 0.55, w: 0.32 },
       },
       loggedIn: true,
       user: { mid: 1, name: '三星堆机甲战士', face: avatar, vip: true },
@@ -386,6 +411,9 @@
     setTimeout(() => {
       if (wantCollapsed) {
         document.querySelector('button[title="收起"]')?.click();
+      }
+      if (wantMini) {
+        document.querySelector('button[title="小屏设置"]')?.click();
       }
     }, 700);
 

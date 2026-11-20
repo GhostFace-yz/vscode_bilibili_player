@@ -12,6 +12,13 @@ export const PORT_RANGE = [17321, 17322, 17323, 17324, 17325, 17326, 17327, 1732
 /** 铺满方式：完整 = 按视频宽高比在编辑区里完整显示；小屏 = 预留（暂未实现） */
 export type FitMode = 'full' | 'mini';
 
+/** 小屏视频框：x/w 相对编辑区可用宽度，y 相对（编辑区高度 - 顶部留白），取值 0-1 */
+export interface MiniRect {
+  x: number;
+  y: number;
+  w: number;
+}
+
 export interface SkinSettings {
   opacity: number;
   blur: number;
@@ -24,6 +31,8 @@ export interface SkinSettings {
   hiddenMode: boolean;
   /** 移除黑边：用 ffmpeg 探测画面真实宽高比，按内容比例排布并裁掉视频自带的黑边 */
   cropBars: boolean;
+  /** 小屏模式下视频框的位置和宽度 */
+  miniRect: MiniRect;
 }
 
 export interface BiliUser {
@@ -114,6 +123,7 @@ export const DEFAULT_SKIN_SETTINGS: SkinSettings = {
   quality: 80,
   hiddenMode: false,
   cropBars: true,
+  miniRect: { x: 0.62, y: 0.55, w: 0.32 },
 };
 
 export function renderSkinConfig(config: SkinConfig): string {
