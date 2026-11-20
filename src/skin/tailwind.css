@@ -229,29 +229,24 @@
   }
 }
 
-/* 展开回宽胶囊时：宽度先长，三个点在最右侧反向转回，结束后再露出内容 */
-.bili-pill[data-expanding='true'] .bili-pill-content > :not(.bili-mini-btn) {
+/*
+ * 展开回宽胶囊：MoreHoriz 直接被播放按钮替换，按钮随宽度增长从右往左移动，
+ * 同时逆时针转一整圈；宽度长完后再露出其余内容。
+ */
+.bili-pill[data-expanding='true'] .bili-pill-content > :not(.bili-pill-play) {
   display: none;
 }
 
-.bili-pill[data-expanding='true'] .bili-pill-content {
-  justify-content: flex-end;
+.bili-pill[data-expanding='true'] .bili-pill-play svg {
+  animation: bili-expand-spin 760ms cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
-.bili-pill[data-expanding='true'] .bili-mini-btn {
-  display: inline-flex;
-}
-
-.bili-pill[data-expanding='true'] .bili-mini-btn svg {
-  animation: bili-mini-spin-reverse 760ms cubic-bezier(0.22, 1, 0.36, 1) both;
-}
-
-@keyframes bili-mini-spin-reverse {
+@keyframes bili-expand-spin {
   from {
-    transform: rotate(360deg);
+    transform: rotate(0deg);
   }
   to {
-    transform: rotate(0deg);
+    transform: rotate(-360deg);
   }
 }
 
@@ -845,7 +840,7 @@
   z-index: -1;
   overflow: hidden;
   pointer-events: none;
-  background: var(--vscode-editor-background, #050507);
+  background: var(--vscode-editor-background, #1e1e1e);
 }
 
 #bili-skin-video-layer .bili-video {
@@ -854,6 +849,8 @@
   width: 100%;
   height: 100%;
   object-fit: var(--bili-fit, cover);
+  /* contain 时视频上下/左右的留白用编辑器背景色，而不是黑色 */
+  background: var(--vscode-editor-background, #1e1e1e);
   opacity: var(--bili-opacity, 0.5);
   filter: blur(var(--bili-blur, 2px)) saturate(1.05);
   transform: scale(1.02);

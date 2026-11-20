@@ -1966,7 +1966,7 @@ export function Hud({ config, videoHost }: HudProps) {
             <div className="bili-pill-content" ref={pillContentRef}>
               <button
                 type="button"
-                className="bili-play-btn bili-play-btn-small"
+                className="bili-play-btn bili-play-btn-small bili-pill-play"
                 aria-label={busy ? '加载中' : playing ? '暂停' : '播放'}
                 aria-busy={busy}
                 onClick={togglePlay}
