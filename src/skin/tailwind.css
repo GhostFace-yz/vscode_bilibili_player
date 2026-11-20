@@ -62,6 +62,17 @@
   box-sizing: border-box;
 }
 
+/* 鼠标点击按钮后不要留下 VS Code 的 focus 边框；键盘 Tab 仍保留 focus-visible */
+#bili-skin-hud button:focus {
+  outline: none;
+  box-shadow: none;
+}
+
+#bili-skin-hud button:focus-visible {
+  outline: 1px solid var(--vscode-focusBorder, #6272a4);
+  outline-offset: 1px;
+}
+
 #bili-skin-hud {
   position: fixed;
   right: 18px;
@@ -293,6 +304,68 @@
 .bili-switch[data-state='checked'] .bili-switch-thumb {
   background: var(--bili-button-fg);
   transform: translate(17px, -50%);
+}
+
+/* ---------- 加载 skeleton ---------- */
+
+.bili-skeleton {
+  display: inline-block;
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--bili-fg) 14%, transparent);
+  animation: bili-skeleton-pulse 1.3s ease-in-out infinite;
+}
+
+.bili-skeleton-avatar {
+  width: 24px;
+  height: 24px;
+  border-radius: 8px;
+}
+
+.bili-skeleton-line {
+  height: 11px;
+  margin: 2px 0;
+}
+
+.bili-skeleton-line-sm {
+  height: 9px;
+}
+
+.bili-skeleton-time {
+  width: 86px;
+  height: 10px;
+}
+
+.bili-skeleton-chip {
+  width: 72px;
+  height: 28px;
+  border-radius: 6px;
+}
+
+.bili-skeleton-episode {
+  width: 100%;
+  height: 32px;
+  border-radius: 6px;
+}
+
+.bili-skeleton-avatar-sm {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+}
+
+.bili-skeleton-name {
+  width: 64px;
+  height: 10px;
+}
+
+@keyframes bili-skeleton-pulse {
+  0%,
+  100% {
+    opacity: 0.45;
+  }
+  50% {
+    opacity: 0.9;
+  }
 }
 
 /* ---------- 按钮 ---------- */
@@ -848,6 +921,8 @@
   object-fit: var(--bili-fit, cover);
   /* contain 时视频上下/左右的留白用编辑器背景色，而不是黑色 */
   background: var(--vscode-editor-background, #1e1e1e);
+  /* 源视频里烘焙的黑边通过 screen 混合融入编辑器背景色 */
+  mix-blend-mode: screen;
   opacity: var(--bili-opacity, 0.5);
   filter: blur(var(--bili-blur, 2px)) saturate(1.05);
   transform: scale(1.02);

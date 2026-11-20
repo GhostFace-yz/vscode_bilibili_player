@@ -1668,20 +1668,32 @@ export function Hud({ config, videoHost }: HudProps) {
           >
             <div className="bili-panel-content" ref={panelContentRef}>
               <div className="bp-flex bp-items-center bp-gap-2 bili-divider-b bp-px-3 bp-py-2.5">
-                <img
-                  className="bp-h-6 bp-w-6 bp-shrink-0 bp-rounded-md bp-object-cover"
-                  src={logoUrl}
-                  alt=""
-                />
+                {info ? (
+                  <img
+                    className="bp-h-6 bp-w-6 bp-shrink-0 bp-rounded-md bp-object-cover"
+                    src={logoUrl}
+                    alt=""
+                  />
+                ) : (
+                  <span className="bili-skeleton bili-skeleton-avatar" />
+                )}
                 <div className="bp-min-w-0 bp-flex-1">
-                  <div className="bp-truncate bp-text-[13px] bp-font-medium">
-                    {info?.title ?? '未加载视频'}
-                  </div>
-                  <div className="bp-truncate bp-text-[11px] bili-muted">
-                    {info
-                      ? `${info.owner} · ${qualityLabel}${episodeLabel ? ` · ${episodeLabel}` : ''} · ${formatTime(currentTime)} / ${formatTime(duration)}`
-                      : '输入 BV 号或链接，把视频铺到代码下面'}
-                  </div>
+                  {info ? (
+                    <>
+                      <div className="bp-truncate bp-text-[13px] bp-font-medium">{info.title}</div>
+                      <div className="bp-truncate bp-text-[11px] bili-muted">
+                        {`${info.owner} · ${qualityLabel}${episodeLabel ? ` · ${episodeLabel}` : ''} · ${formatTime(currentTime)} / ${formatTime(duration)}`}
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <div className="bili-skeleton bili-skeleton-line" style={{ width: '72%' }} />
+                      <div
+                        className="bili-skeleton bili-skeleton-line bili-skeleton-line-sm"
+                        style={{ width: '52%' }}
+                      />
+                    </>
+                  )}
                 </div>
                 <button
                   type="button"
@@ -1738,9 +1750,13 @@ export function Hud({ config, videoHost }: HudProps) {
                       }
                     }}
                   />
-                  <span className="bp-w-[86px] bp-shrink-0 bp-text-right bp-text-[11px] bp-tabular-nums bili-muted">
-                    {formatTime(currentTime)} / {formatTime(duration)}
-                  </span>
+                  {info ? (
+                    <span className="bp-w-[86px] bp-shrink-0 bp-text-right bp-text-[11px] bp-tabular-nums bili-muted">
+                      {formatTime(currentTime)} / {formatTime(duration)}
+                    </span>
+                  ) : (
+                    <span className="bili-skeleton bili-skeleton-time" />
+                  )}
                 </div>
               </div>
 
@@ -1766,6 +1782,13 @@ export function Hud({ config, videoHost }: HudProps) {
                   onChange={(event) => changeVolume(Number(event.target.value))}
                 />
                 <div className="bp-ml-auto bp-flex bp-items-center bp-gap-1.5">
+                  {!info ? (
+                    <>
+                      <span className="bili-skeleton bili-skeleton-chip" />
+                      <span className="bili-skeleton bili-skeleton-chip" />
+                    </>
+                  ) : (
+                    <>
                   <button
                     type="button"
                     className="bili-icon-btn"
@@ -1803,10 +1826,16 @@ export function Hud({ config, videoHost }: HudProps) {
                       <SelectItem value="fill">拉伸</SelectItem>
                     </SelectContent>
                   </Select>
+                    </>
+                  )}
                 </div>
               </div>
 
-              {info && (info.episodes?.length ?? 0) > 1 ? (
+              {!info ? (
+                <div className="bp-flex bp-items-center bili-divider-t bp-pt-2">
+                  <span className="bili-skeleton bili-skeleton-episode" />
+                </div>
+              ) : info.episodes && info.episodes.length > 1 ? (
                 <div className="bp-flex bp-items-center bp-gap-1.5 bili-divider-t bp-pt-2">
                   <button
                     type="button"
@@ -1917,7 +1946,12 @@ export function Hud({ config, videoHost }: HudProps) {
                 </Button>
 
                 <div className="bp-ml-auto bp-flex bp-items-center bp-gap-2">
-                  {state?.user ? (
+                  {!state ? (
+                    <>
+                      <span className="bili-skeleton bili-skeleton-avatar-sm" />
+                      <span className="bili-skeleton bili-skeleton-name" />
+                    </>
+                  ) : state.user ? (
                     <>
                       <img
                         className="bp-h-5 bp-w-5 bp-rounded-full bp-object-cover"
