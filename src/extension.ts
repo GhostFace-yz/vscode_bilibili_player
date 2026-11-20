@@ -188,7 +188,17 @@ async function initServices(context: vscode.ExtensionContext): Promise<Services>
   apiPort = server.port;
   log(`本地 API 已启动：http://127.0.0.1:${server.port}`, '启动');
   log(`客户端日志：${clientLogPath}`, '启动');
-  log(`音频转码器：${findAudioTranscoder()?.name ?? '未找到（无法播放 AAC 音轨）'}`, '启动');
+  const transcoder = findAudioTranscoder();
+  log(
+    transcoder
+      ? `音频转码器：${transcoder.name}`
+      : `音频转码器：未找到（视频会只有画面没有声音）${
+          process.platform === 'win32'
+            ? '；Windows 安装方法：winget install Gyan.FFmpeg（装完重启 VS Code），或把 ffmpeg.exe 所在目录加到 PATH'
+            : '；macOS：brew install ffmpeg'
+        }`,
+    '启动',
+  );
 
   const started: Services = { auth, state, server, token, liveDanmaku };
   await syncSkinConfig(context, started);
@@ -627,7 +637,14 @@ function formatClock(seconds: number): string {
 }
 
 function reportError(error: unknown): void {
-  const message = toMessage(error);
+  const raw = toMessage(error);
+  const denied = /EACCES|EPERM|access is denied|permission denied/i.test(raw);
+  const message =
+    denied && process.platform === 'win32'
+      ? `${raw}\n（没有写入 VS Code 安装目录的权限：请以管理员身份运行 VS Code，或者使用用户级安装版的 VS Code）`
+      : denied
+        ? `${raw}\n（没有写入 VS Code 安装目录的权限：请检查文件权限，或用有权限的账号运行）`
+        : raw;
   log(`错误：${message}`, '错误');
   void vscode.window.showErrorMessage(`B站皮肤：${message}`);
 }

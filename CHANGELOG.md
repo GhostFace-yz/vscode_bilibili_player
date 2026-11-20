@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.6.8
+
+- Windows 适配：
+  - ffmpeg 查找支持 Windows：`BILI_FFMPEG_PATH`、winget / choco / scoop / `C:\ffmpeg\bin` 等常见目录，`PATH` 扫描按 `PATHEXT` 自动补 `.exe/.cmd/.bat`，并去掉 PATH 里的引号
+  - Windows 的 ffmpeg 构建没有 `libmp3lame` 时自动退回 WAV（PCM），不会出现“有画面没声音”
+  - 所有 ffmpeg/编码器子进程加 `windowsHide`，不再闪控制台窗口
+  - `/api/health` 返回 `audioTranscoder` / `ffmpeg` / `platform`；HUD 启动时如果没找到 ffmpeg 会弹一次提示（带 Windows 安装命令）
+  - 启动日志按平台给出安装提示；写入安装目录被拒（EACCES/EPERM）时提示以管理员身份运行 VS Code
+  - 修复校验和、备份、范围请求等路径逻辑确认跨平台（`path.join` / `path.sep`）
+- 文档补「Windows」章节（ffmpeg、应用皮肤权限、校验和修复、缓存路径）
+
 ## 0.6.7
 
 - 宽胶囊的左右留白和上下对齐：`padding: 0 12px` 改成四边 `5px`（加 1px 边框 = 6px），和迷你胶囊的 6px 完全一致，收起动画里按钮不再显得比边框“跑得快”

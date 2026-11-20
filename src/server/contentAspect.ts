@@ -171,7 +171,7 @@ function pickSampleTime(durationSeconds: number, fraction: number): number {
 
 function runFfmpeg(bin: string, args: string[], timeoutMs: number): Promise<string> {
   return new Promise((resolve) => {
-    const child = spawn(bin, args, { stdio: ['ignore', 'ignore', 'pipe'] });
+    const child = spawn(bin, args, { stdio: ['ignore', 'ignore', 'pipe'], windowsHide: true });
     let stderr = '';
     let settled = false;
 

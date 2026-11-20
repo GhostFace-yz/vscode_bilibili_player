@@ -676,6 +676,27 @@ export function Hud({ config, videoHost }: HudProps) {
     return () => video.removeEventListener('loadedmetadata', onMetadata);
   }, [srcUrl, applyMediaSettings, notePlayError]);
 
+  // 环境检查：没装 ffmpeg 时视频没声音，Windows 上很常见
+  useEffect(() => {
+    let cancelled = false;
+    void api.health().then((health) => {
+      if (cancelled || !health || health.audioTranscoder) {
+        return;
+      }
+      const hint =
+        health.platform === 'win32'
+          ? 'Windows 可运行 winget install Gyan.FFmpeg，装完重启 VS Code'
+          : 'macOS 可运行 brew install ffmpeg';
+      toast.warning(`没找到 ffmpeg：视频会只有画面没有声音。${hint}`, {
+        id: 'bili-no-ffmpeg',
+        duration: 10_000,
+      });
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [api]);
+
   // 只有小屏模式才需要小屏设置面板
   useEffect(() => {
     if (settings.fit !== 'mini') {

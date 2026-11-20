@@ -1,4 +1,4 @@
-import { spawn } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 
@@ -14,12 +14,28 @@ export interface AudioTranscoder {
   convert(input: string, output: string): Promise<void>;
 }
 
-const FFMPEG_CANDIDATES = [
-  process.env.BILI_FFMPEG_PATH,
-  '/opt/homebrew/bin/ffmpeg',
-  '/usr/local/bin/ffmpeg',
-  '/usr/bin/ffmpeg',
-].filter((value): value is string => Boolean(value));
+const IS_WINDOWS = process.platform === 'win32';
+
+/** macOS: Homebrew / usr-local / usr；Windows: winget / choco / scoop / 常见安装目录。 */
+function ffmpegCandidates(): string[] {
+  const candidates: (string | undefined)[] = [process.env.BILI_FFMPEG_PATH];
+  if (IS_WINDOWS) {
+    const env = process.env;
+    candidates.push(
+      env.LOCALAPPDATA && path.join(env.LOCALAPPDATA, 'Microsoft', 'WinGet', 'Links', 'ffmpeg.exe'),
+      env.LOCALAPPDATA && path.join(env.LOCALAPPDATA, 'Programs', 'ffmpeg', 'bin', 'ffmpeg.exe'),
+      env.ProgramFiles && path.join(env.ProgramFiles, 'ffmpeg', 'bin', 'ffmpeg.exe'),
+      env.ProgramData && path.join(env.ProgramData, 'chocolatey', 'bin', 'ffmpeg.exe'),
+      env.USERPROFILE && path.join(env.USERPROFILE, 'scoop', 'shims', 'ffmpeg.exe'),
+      'C:\\ffmpeg\\bin\\ffmpeg.exe',
+    );
+  } else {
+    candidates.push('/opt/homebrew/bin/ffmpeg', '/usr/local/bin/ffmpeg', '/usr/bin/ffmpeg');
+  }
+  return candidates.filter((value): value is string => Boolean(value));
+}
+
+const FFMPEG_CANDIDATES = ffmpegCandidates();
 
 let cachedMp3: AudioTranscoder | null | undefined;
 let cachedWav: AudioTranscoder | null | undefined;
@@ -49,7 +65,8 @@ export function findAudioTranscoder(prefer: 'mp3' | 'wav' = 'mp3'): AudioTransco
   }
 
   if (ffmpeg) {
-    cachedMp3 = ffmpegTranscoder(ffmpeg);
+    // Windows 的第三方 ffmpeg 构建不一定带 libmp3lame；没有就退回 WAV（PCM），保证有声音
+    cachedMp3 = ffmpegHasMp3Lame(ffmpeg) ? ffmpegTranscoder(ffmpeg) : ffmpegWavTranscoder(ffmpeg);
     return cachedMp3;
   }
 
@@ -123,6 +140,26 @@ function afconvertTranscoder(bin: string): AudioTranscoder {
   };
 }
 
+let mp3LameSupport: boolean | undefined;
+
+function ffmpegHasMp3Lame(bin: string): boolean {
+  if (mp3LameSupport !== undefined) {
+    return mp3LameSupport;
+  }
+  try {
+    const result = spawnSync(bin, ['-hide_banner', '-encoders'], {
+      encoding: 'utf8',
+      timeout: 15_000,
+      windowsHide: true,
+      maxBuffer: 8 * 1024 * 1024,
+    });
+    mp3LameSupport = /libmp3lame/.test(`${result.stdout ?? ''}${result.stderr ?? ''}`);
+  } catch {
+    mp3LameSupport = false;
+  }
+  return mp3LameSupport;
+}
+
 function isExecutable(file: string): boolean {
   try {
     fs.accessSync(file, fs.constants.X_OK);
@@ -133,11 +170,24 @@ function isExecutable(file: string): boolean {
 }
 
 function findInPath(name: string): string | undefined {
-  const entries = (process.env.PATH ?? '').split(path.delimiter).filter(Boolean);
+  // Windows 的 PATH 里可能带引号/空格，且可执行文件有 .exe/.cmd/.bat 后缀（PATHEXT）
+  const entries = (process.env.PATH ?? '')
+    .split(path.delimiter)
+    .map((entry) => entry.trim().replace(/^"(.*)"$/, '$1'))
+    .filter(Boolean);
+  const suffixes = IS_WINDOWS
+    ? ['', ...(process.env.PATHEXT ?? '.EXE;.CMD;.BAT')
+        .split(';')
+        .filter(Boolean)
+        .flatMap((ext) => [ext.toLowerCase(), ext.toUpperCase()])]
+    : [''];
+
   for (const entry of entries) {
-    const candidate = path.join(entry, name);
-    if (isExecutable(candidate)) {
-      return candidate;
+    for (const suffix of suffixes) {
+      const candidate = path.join(entry, `${name}${suffix}`);
+      if (isExecutable(candidate)) {
+        return candidate;
+      }
     }
   }
   return undefined;
@@ -145,7 +195,7 @@ function findInPath(name: string): string | undefined {
 
 function run(bin: string, args: string[]): Promise<void> {
   return new Promise((resolve, reject) => {
-    const child = spawn(bin, args, { stdio: ['ignore', 'ignore', 'pipe'] });
+    const child = spawn(bin, args, { stdio: ['ignore', 'ignore', 'pipe'], windowsHide: true });
     let stderr = '';
     child.stderr.on('data', (chunk: Buffer) => {
       stderr = `${stderr}${chunk.toString()}`.slice(-2000);

@@ -270,6 +270,7 @@
     const wantError = params.get('error') === '1';
     const wantMini = params.get('mini') === '1';
     const wantDanmaku = params.get('danmaku') === '1';
+    const wantNoFfmpeg = params.get('noffmpeg') === '1';
 
     const svg = (body) => 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(body);
     const avatar = svg(
@@ -350,7 +351,14 @@
       const url = typeof input === 'string' ? input : input.url;
       const path = new URL(url).pathname;
       if (path.endsWith('/api/health')) {
-        return json({ ok: true, apiVersion: 2, version: 'fixture' });
+        return json({
+          ok: true,
+          apiVersion: 3,
+          version: 'fixture',
+          audioTranscoder: wantNoFfmpeg ? null : 'ffmpeg (fixture)',
+          ffmpeg: !wantNoFfmpeg,
+          platform: 'darwin',
+        });
       }
       if (path.endsWith('/api/state')) {
         if (init?.method === 'POST') {

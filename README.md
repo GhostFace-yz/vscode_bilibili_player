@@ -4,7 +4,7 @@
 
 把 B 站视频铺在 VS Code 工作台最底层：视频只在编辑区背后播放，侧边栏/终端/状态栏保持原生遮挡，右下角悬浮控制条——写代码和看视频真正在同一个画面里，而不是挤一个侧边栏。
 
-> v0.4.7：工作台注入、直连播放、扫码登录、React + Tailwind HUD、主题自适应配色、shadcn Select/Button、GSAP morph 动画、登录后刷新清晰度、上下集切换，已在 macOS / VS Code 1.147 实测。包管理工具为 **pnpm**。
+> v0.4.7：工作台注入、直连播放、扫码登录、React + Tailwind HUD、主题自适应配色、shadcn Select/Button、GSAP morph 动画、登录后刷新清晰度、上下集切换，已在 macOS / VS Code 1.147 实测，Windows 也做了适配（需要 ffmpeg）。包管理工具为 **pnpm**。
 
 ## 功能
 
@@ -18,7 +18,7 @@
 - **登录后刷新清晰度**：扫码登录成功后自动重拉 playurl，清晰度列表与当前画质随之更新；也可点刷新按钮手动更新
 - **上下集切换**：支持多 P 视频和 B 站合集/season，HUD 显示「第 X/Y 集」、上一集/下一集和选集下拉
 - **HUD 组件**：图标来自 [xicons](https://xicons.org/)（Tabler），下拉/按钮使用 shadcn/ui 风格组件，收起/展开是「模糊 → 缩放 → 取消模糊」的 GSAP morph，登录弹窗也有 GSAP 过渡
-- **不遮挡编辑区**：逐层透明化编辑器和吸顶滚动（sticky scroll）背景，滚动到方法内部时顶部不会再出现遮挡横带
+- **不遮挡编辑区**：逐层透明化编辑区背景；吸顶滚动（sticky scroll / 方法栏）保留主题背景，出现时视频整体下移让位，消失后自动上移
 - **安全模式**：不改任何安装文件的 Webview 播放器，作为兜底
 - **可还原**：自动备份、注入内容可完整移除、CSP 与 `product.json` 校验和自动恢复/修正
 - **兼容旧补丁**：检测到之前手动注入的 `#bilibili-background-video` 时，会在皮肤显示期间自动隐藏它
@@ -64,6 +64,25 @@ pnpm run vsix
 - 还是不行就直接装 VSIX（方式 B），不依赖 F5
 
 > 「应用皮肤」会修改 VS Code 安装目录中的 `workbench.html`（以及写入 3 个皮肤文件），需要当前用户对安装目录有写权限。macOS 正常安装在 `/Applications` 时一般可直接写入。
+
+## Windows
+
+Windows 上功能一致，环境上有几个前提：
+
+1. **安装 ffmpeg**（音频转码、直播转流、画面黑边探测都要用）：
+   ```powershell
+   winget install Gyan.FFmpeg
+   # 或 choco install ffmpeg / scoop install ffmpeg
+   ```
+   装完要**重启 VS Code**（扩展只在启动时读 PATH）。扩展会依次找：`BILI_FFMPEG_PATH` → winget / choco / scoop / `C:\ffmpeg\bin` 等常见目录 → `PATH`（自动补 `.exe/.cmd/.bat`）。
+   也可以手动指定：`setx BILI_FFMPEG_PATH "C:\ffmpeg\bin\ffmpeg.exe"`。
+   如果 ffmpeg 构建里没有 `libmp3lame`，会自动退回 WAV（体积大但能出声）。
+2. **应用皮肤**：命令面板 `B站皮肤: 应用皮肤（注入工作台）`。这一步会改 `workbench.html` 和 `product.json`：
+   - 用户级安装（`%LOCALAPPDATA%\Programs\Microsoft VS Code`）直接可用
+   - 系统级安装（`Program Files`）需要**以管理员身份运行 VS Code**
+3. 如果出现「Code 安装似乎损坏」，运行 `B站皮肤: 修复校验和（消除安装损坏提示）`。
+4. 日志与缓存：`%APPDATA%\Code\User\globalStorage\ghostface-yz.vscode-bilibili-player\`（`client.log`、`audio-cache/`）。
+5. 直播同样依赖 ffmpeg：HLS 会被转成 fMP4（H.264 copy + MP3 音频）再播放。
 
 ## 命令
 

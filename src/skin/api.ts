@@ -28,12 +28,36 @@ export interface ContentAspectResult {
   cropped?: boolean;
 }
 
+export interface HealthInfo {
+  ok: boolean;
+  version?: string;
+  apiVersion?: number;
+  audioTranscoder?: string | null;
+  ffmpeg?: boolean;
+  platform?: string;
+}
+
 export class SkinApi {
   private preferredPort: number;
   private readonly verifiedPorts = new Set<number>();
 
   constructor(private readonly config: SkinConfig) {
     this.preferredPort = config.port;
+  }
+
+  /** 直接读 /api/health（不需要额外校验），用于提示 ffmpeg 缺失等环境问题。 */
+  async health(): Promise<HealthInfo | null> {
+    try {
+      const response = await fetch(`http://127.0.0.1:${this.preferredPort}/api/health`, {
+        cache: 'no-store',
+      });
+      if (!response.ok) {
+        return null;
+      }
+      return (await response.json()) as HealthInfo;
+    } catch {
+      return null;
+    }
   }
 
   state(): Promise<SkinState> {

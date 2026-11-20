@@ -111,7 +111,15 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
   const path = url.pathname;
 
   if (path === '/api/health') {
-    sendJson(res, 200, { ok: true, version: deps.version, apiVersion: API_VERSION });
+    sendJson(res, 200, {
+      ok: true,
+      version: deps.version,
+      apiVersion: API_VERSION,
+      // 没装 ffmpeg 时界面里会提示（Windows 上尤其常见）
+      audioTranscoder: findAudioTranscoder()?.name ?? null,
+      ffmpeg: Boolean(findFfmpegBinary()),
+      platform: process.platform,
+    });
     return;
   }
 
@@ -757,7 +765,7 @@ async function proxyLiveStream(
       'mp4',
       'pipe:1',
     ],
-    { stdio: ['ignore', 'pipe', 'pipe'] },
+    { stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true },
   );
 
   let stderr = '';
