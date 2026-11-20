@@ -675,8 +675,8 @@
   display: inline-block;
   width: 14px;
   height: 14px;
-  border: 2px solid color-mix(in srgb, var(--bili-button-fg) 35%, transparent);
-  border-top-color: var(--bili-button-fg);
+  border: 2px solid color-mix(in srgb, currentColor 35%, transparent);
+  border-top-color: currentColor;
   border-radius: 50%;
   animation: bili-spinner-spin 0.8s linear infinite;
 }
@@ -1219,6 +1219,7 @@
 }
 
 .bili-buffer-ring {
+  color: var(--bili-accent);
   display: grid;
   place-items: center;
   width: 44px;

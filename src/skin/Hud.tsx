@@ -2374,7 +2374,7 @@ export function Hud({ config, videoHost }: HudProps) {
         />
       ) : null}
       <div className="bili-dim" />
-      {buffering && srcUrl && videoBox ? (
+      {buffering && srcUrl && videoBox && revealVideo ? (
         <div className="bili-buffer" style={videoBox}>
           <span className="bili-buffer-ring">
             <span className="bili-spinner" />
@@ -2950,10 +2950,10 @@ export function Hud({ config, videoHost }: HudProps) {
                 aria-busy={busy || buffering}
                 onClick={pillCollapsing || buffering ? undefined : togglePlay}
               >
-                {pillCollapsing ? (
-                  <MoreHorizTwotone width={16} height={16} />
-                ) : busy || buffering ? (
+                {busy || buffering ? (
                   <span className="bili-spinner" />
+                ) : pillCollapsing ? (
+                  <MoreHorizTwotone width={16} height={16} />
                 ) : playing ? (
                   <PlayerPause width={13} height={13} />
                 ) : (

@@ -17,7 +17,7 @@ import { renderSkinConfig, type DanmakuItem, type SkinConfig } from './shared/ty
 import { ExtensionState } from './state';
 import { findChecksumMismatches, fixChecksums } from './workbench/checksums';
 import { locateWorkbench, type WorkbenchInstall } from './workbench/locate';
-import { applyPatch, isPatched, restorePatch, writeSkinConfig } from './workbench/patcher';
+import { applyPatch, isPatched, restorePatch, SKIN_CSS, SKIN_JS, writeSkinConfig } from './workbench/patcher';
 
 const TOKEN_KEY = 'bilibiliPlayer.apiToken';
 const SKIN_VERSION_KEY = 'bilibiliPlayer.skinVersion';
@@ -335,24 +335,26 @@ async function syncSkinConfig(context: vscode.ExtensionContext, started: Service
   const config = skinConfigFor(context, started);
   try {
     const current = readSkinConfigFile(install);
-    const changed =
-      !current ||
-      current.token !== config.token ||
-      current.port !== config.port ||
-      current.version !== config.version;
+    const assetsDir = path.dirname(install.htmlPath);
+    const assetsMissing =
+      !fs.existsSync(path.join(assetsDir, SKIN_JS)) || !fs.existsSync(path.join(assetsDir, SKIN_CSS));
+    // 只有扩展版本变化或注入文件丢失时才重写 workbench.html。
+    // 端口/令牌变化只改 config 文件：HUD 会自动扫描 17321-17330 并 401 自愈，
+    // 而重写 workbench.html 会让 VS Code 主进程缓存的校验和失配，下次窗口误报“安装损坏”。
+    const needsInject = !current || current.version !== config.version || assetsMissing;
 
-    if (!changed) {
+    if (!needsInject) {
       writeSkinConfig(install, renderSkinConfig(config));
       return;
     }
 
-    // 版本/端口/令牌变了：重新注入一遍（同时换掉 ?v= 缓存键，避免渲染进程读到旧资源）
+    // 版本变化：重新注入一遍（同时换掉 ?v= 缓存键，避免渲染进程读到旧资源）
     applyPatch(install, readSkinAssets(context, config), {
       backupRoot: path.join(context.globalStorageUri.fsPath, 'workbench-backups'),
       cacheKey: String(Date.now()),
       log,
     });
-    log('皮肤资源已更新（版本/端口/令牌变化），重载窗口后生效。', '皮肤');
+    log('皮肤资源已更新（扩展版本变化），重载窗口后生效。', '皮肤');
     void vscode.window
       .showInformationMessage('B站皮肤已随扩展更新，需要重载窗口生效。', '重载窗口')
       .then((choice) => {
