@@ -231,12 +231,9 @@
 
 /*
  * 展开回宽胶囊：MoreHoriz 直接被播放按钮替换，按钮随宽度增长从右往左移动，
- * 同时逆时针转一整圈；宽度长完后再露出其余内容。
+ * 同时逆时针转一整圈。其余内容不做 display 切换，靠胶囊宽度自然从右往左揭开，
+ * 避免动画结束后内容整块跳出。
  */
-.bili-pill[data-expanding='true'] .bili-pill-content > :not(.bili-pill-play) {
-  display: none;
-}
-
 .bili-pill[data-expanding='true'] .bili-pill-play svg {
   animation: bili-expand-spin 760ms cubic-bezier(0.22, 1, 0.36, 1) both;
 }
