@@ -2846,11 +2846,13 @@ export function Hud({ config, videoHost }: HudProps) {
               <button
                 type="button"
                 className="bili-play-btn bili-play-btn-small bili-pill-play"
-                aria-label={busy ? '加载中' : playing ? '暂停' : '播放'}
+                aria-label={pillCollapsing ? '收起中' : busy ? '加载中' : playing ? '暂停' : '播放'}
                 aria-busy={busy}
-                onClick={togglePlay}
+                onClick={pillCollapsing ? undefined : togglePlay}
               >
-                {busy ? (
+                {pillCollapsing ? (
+                  <MoreHorizTwotone width={16} height={16} />
+                ) : busy ? (
                   <span className="bili-spinner" />
                 ) : playing ? (
                   <PlayerPause width={13} height={13} />
