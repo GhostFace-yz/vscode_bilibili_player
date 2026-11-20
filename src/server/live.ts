@@ -21,6 +21,8 @@ export interface LivePlayInfo {
   streamUrl?: string;
   /** 上游视频编码：avc 时宿主直接 copy，否则转码 */
   videoCodec?: string;
+  acceptQn?: number[];
+  currentQn?: number;
 }
 
 interface RoomInfoResponse {
@@ -37,6 +39,7 @@ interface RoomInfoResponse {
 interface LiveStreamCodec {
   codec_name?: string;
   current_qn?: number;
+  accept_qn?: number[];
   base_url?: string;
   url_info?: { host?: string; extra?: string }[];
 }
@@ -75,7 +78,11 @@ export function parseLiveRoomId(input: string): number | null {
   return null;
 }
 
-export async function fetchLiveRoom(client: BiliClient, input: string): Promise<LivePlayInfo> {
+export async function fetchLiveRoom(
+  client: BiliClient,
+  input: string,
+  qn = 10000,
+): Promise<LivePlayInfo> {
   const roomId = parseLiveRoomId(input);
   if (!roomId) {
     throw new Error('请输入直播间链接或房间号，例如 https://live.bilibili.com/6');
@@ -96,7 +103,7 @@ export async function fetchLiveRoom(client: BiliClient, input: string): Promise<
   }
 
   const play = await client.get<LivePlayInfoResponse>(
-    `${PLAY_INFO_URL}?room_id=${info.roomId}&protocol=0,1&format=0,1,2&codec=0,1&qn=10000&platform=web&ptype=8&dolby=5&panorama=1`,
+    `${PLAY_INFO_URL}?room_id=${info.roomId}&protocol=0,1&format=0,1,2&codec=0,1&qn=${qn}&platform=web&ptype=8&dolby=5&panorama=1`,
   );
 
   const picked = pickLiveStream(play);
@@ -107,11 +114,15 @@ export async function fetchLiveRoom(client: BiliClient, input: string): Promise<
   info.liveStatus = play.live_status ?? info.liveStatus;
   info.streamUrl = picked.url;
   info.videoCodec = picked.codec;
+  info.acceptQn = picked.acceptQn;
+  info.currentQn = picked.currentQn;
   info.owner = await fetchOwnerName(client, room.uid).catch(() => '');
   return info;
 }
 
-function pickLiveStream(play: LivePlayInfoResponse): { url: string; codec: string } | null {
+function pickLiveStream(
+  play: LivePlayInfoResponse,
+): { url: string; codec: string; acceptQn?: number[]; currentQn?: number } | null {
   const streams = play.playurl_info?.playurl?.stream ?? [];
   // 优先 HLS：ffmpeg 能稳定读，且可以转成渐进 fMP4
   const hls = streams.find((stream) => stream.protocol_name === 'http_hls') ?? streams[0];
@@ -133,6 +144,8 @@ function pickLiveStream(play: LivePlayInfoResponse): { url: string; codec: strin
       return {
         url: `${urlInfo.host}${codec.base_url}${urlInfo.extra ?? ''}`,
         codec: codec.codec_name ?? 'avc',
+        acceptQn: codec.accept_qn,
+        currentQn: codec.current_qn,
       };
     }
   }

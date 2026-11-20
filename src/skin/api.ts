@@ -84,9 +84,13 @@ export class SkinApi {
   }
 
   /** 解析直播间链接/房间号，拿到开播状态和上游 HLS 地址。 */
-  liveRoom(input: string): Promise<{ ok: boolean; room?: LiveRoomInfo; error?: string }> {
+  liveRoom(
+    input: string,
+    qn?: number,
+  ): Promise<{ ok: boolean; room?: LiveRoomInfo; error?: string }> {
+    const qnParam = qn ? `&qn=${qn}` : '';
     return this.request<{ ok: boolean; room?: LiveRoomInfo; error?: string }>(
-      `/api/live/room?input=${encodeURIComponent(input)}`,
+      `/api/live/room?input=${encodeURIComponent(input)}${qnParam}`,
     );
   }
 

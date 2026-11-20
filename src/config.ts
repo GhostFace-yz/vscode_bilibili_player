@@ -5,6 +5,7 @@ import { DEFAULT_SKIN_SETTINGS } from './shared/types';
 export interface BilibiliPlayerSettings extends SkinSettings {
   defaultVideo: string;
   useIframePlayer: boolean;
+  danmakuAutoScroll: boolean;
 }
 
 const FIT_MODES: FitMode[] = ['full', 'mini'];
@@ -27,6 +28,7 @@ export function getSettings(): BilibiliPlayerSettings {
     miniRect: normalizeMiniRect(config.get<unknown>('miniRect')),
     danmaku: config.get<boolean>('danmaku', false),
     useIframePlayer: config.get<boolean>('useIframePlayer', false),
+    danmakuAutoScroll: config.get<boolean>('danmakuAutoScroll', true),
   };
 }
 

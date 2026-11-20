@@ -24,6 +24,10 @@ export interface LiveRoomInfo {
   streamUrl?: string;
   /** 上游视频编码，avc 时宿主直接 copy */
   videoCodec?: string;
+  /** 直播间支持的清晰度（qn），如 10000/400/250/150 */
+  acceptQn?: number[];
+  /** 当前实际拿到的清晰度 */
+  currentQn?: number;
 }
 
 export interface LiveDanmakuItem {

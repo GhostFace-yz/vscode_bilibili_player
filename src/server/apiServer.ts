@@ -43,7 +43,7 @@ export interface ApiServerDeps {
   getPlayInfo(ref: VideoRef, qn: number): Promise<PlayInfo>;
   getDanmaku?(cid: number): Promise<DanmakuItem[]>;
   onDanmaku?(items: DanmakuItem[], live?: boolean): void;
-  getLiveRoom?(input: string): Promise<LiveRoomInfo>;
+  getLiveRoom?(input: string, qn?: number): Promise<LiveRoomInfo>;
   getLiveDanmaku?(roomId: number): Promise<LiveDanmakuItem[]>;
   loginQr(): Promise<LoginQr>;
   loginPoll(key: string): Promise<LoginPoll>;
@@ -155,8 +155,9 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
       sendJson(res, 200, { ok: false, error: '直播功能不可用' });
       return;
     }
+    const qn = toInt(url.searchParams.get('qn')) ?? undefined;
     try {
-      const room = await deps.getLiveRoom(input);
+      const room = await deps.getLiveRoom(input, qn);
       deps.log?.(`直播间：${room.title}${room.liveStatus === 1 ? `（${room.online} 人气）` : '（未开播）'}`);
       sendJson(res, 200, { ok: true, room });
     } catch (error) {

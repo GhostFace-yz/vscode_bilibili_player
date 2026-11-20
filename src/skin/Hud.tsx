@@ -69,6 +69,18 @@ const MINI_MIN_WIDTH = 120;
 
 type MiniBoxRect = { x: number; y: number; w: number; h: number };
 
+const LIVE_QUALITY_NAMES: Record<number, string> = {
+  10000: '原画',
+  400: '蓝光',
+  250: '超清',
+  150: '高清',
+  80: '流畅',
+};
+
+function liveQualityLabel(qn: number): string {
+  return LIVE_QUALITY_NAMES[qn] ?? `qn ${qn}`;
+}
+
 function lowerBound(items: DanmakuItem[], time: number): number {
   let low = 0;
   let high = items.length;
@@ -1420,7 +1432,7 @@ export function Hud({ config, videoHost }: HudProps) {
     });
   });
 
-  const loadLiveInput = async (raw: string) => {
+  const loadLiveInput = async (raw: string, qn?: number) => {
     const text = raw.trim();
     if (!text) {
       setError('请输入直播间链接或房间号');
@@ -1429,7 +1441,7 @@ export function Hud({ config, videoHost }: HudProps) {
     setLiveLoading(true);
     setError(null);
     try {
-      const result = await api.liveRoom(text);
+      const result = await api.liveRoom(text, qn);
       if (!result.ok || !result.room) {
         setError(result.error ?? '直播间加载失败');
         toast.error(result.error ?? '直播间加载失败');
@@ -1438,6 +1450,10 @@ export function Hud({ config, videoHost }: HudProps) {
       const room = result.room;
       liveSeenIds.current.clear();
       setLiveRoom(room);
+      setInput(text);
+      if (qn && room.currentQn && qn !== room.currentQn) {
+        toast.info(`该清晰度当前不可用，已切换到${liveQualityLabel(room.currentQn)}`);
+      }
       if (!room.streamUrl) {
         setSrcUrl(null);
         setAudioSrc(null);
@@ -2170,9 +2186,9 @@ export function Hud({ config, videoHost }: HudProps) {
                     <>
                       <div className="bp-truncate bp-text-[13px] bp-font-medium">{displayTitle}</div>
                       <div className="bp-truncate bp-text-[11px] bili-muted">
-                        {`直播${liveRoom?.owner ? ` · ${liveRoom.owner}` : ''}${
-                          liveRoom?.online ? ` · ${liveRoom.online} 人气` : ''
-                        }`}
+                        {`直播${liveRoom?.currentQn ? ` · ${liveQualityLabel(liveRoom.currentQn)}` : ''}${
+                          liveRoom?.owner ? ` · ${liveRoom.owner}` : ''
+                        }${liveRoom?.online ? ` · ${liveRoom.online} 人气` : ''}`}
                       </div>
                     </>
                   ) : info ? (
@@ -2309,6 +2325,34 @@ export function Hud({ config, videoHost }: HudProps) {
                     >
                       <PictureInPicture width={13} height={13} />
                     </button>
+                  ) : null}
+                  {isLive ? (
+                    <Select
+                      value={String(liveRoom?.currentQn ?? 10000)}
+                      onValueChange={(value) =>
+                        void loadLiveInput(
+                          input || String(liveRoom?.roomId ?? ''),
+                          Number(value),
+                        )
+                      }
+                    >
+                      <SelectTrigger
+                        className="bili-select-trigger bili-quality-trigger"
+                        aria-label="直播清晰度"
+                      >
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {(liveRoom?.acceptQn?.length
+                          ? liveRoom.acceptQn
+                          : [liveRoom?.currentQn ?? 10000]
+                        ).map((qn) => (
+                          <SelectItem key={qn} value={String(qn)}>
+                            {liveQualityLabel(qn)}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                   ) : null}
                   {isLive ? null : (
                     <>

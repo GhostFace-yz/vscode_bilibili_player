@@ -121,6 +121,7 @@ VS Code 自带的 `libffmpeg` 没有 AAC 解码器（只有 mp3 / flac / vorbis 
 | `bilibiliPlayer.cropBars` | `true` | 移除黑边：用 ffmpeg 探测画面真实宽高比后裁掉片源自带的黑边 |
 | `bilibiliPlayer.miniRect` | `{x:0.62,y:0.55,w:0.32}` | 小屏窗口的位置/宽度（相对编辑区可用区域的 0-1 比例，高度按宽高比算） |
 | `bilibiliPlayer.danmaku` | `false` | 弹幕：打开后按播放时间把弹幕打印到「Bilibili 皮肤」输出面板 |
+| `bilibiliPlayer.danmakuAutoScroll` | `true` | 输出面板保持自动滚动：会把 `output.smartScroll.enabled` 关掉，避免点过输出后弹幕不再跟随 |
 | `bilibiliPlayer.muted` | `true` | 静音播放 |
 | `bilibiliPlayer.autoplay` | `true` | 自动播放 |
 | `bilibiliPlayer.quality` | `80` | 期望清晰度（未登录通常回落到 720P/480P） |
@@ -133,8 +134,9 @@ VS Code 自带的 `libffmpeg` 没有 AAC 解码器（只有 mp3 / flac / vorbis 
 设置面板左下角的「直播模式」开关打开后，输入框改成接收直播间链接或房间号（`https://live.bilibili.com/6` 或者直接 `6`）。
 
 - 直播流是 HLS，VS Code 自带的 libffmpeg 解不了 AAC，所以由扩展宿主用 ffmpeg 转成 fMP4 渐进流：视频 H.264 直接 copy，音频转 MP3，`<video>` 按无限长流播放，音画同源
-- 直播没有进度条（显示 `LIVE`），隐藏选集和清晰度选择；暂停后继续会跳回最新画面
+- 直播没有进度条（显示 `LIVE`），隐藏选集；清晰度按直播间支持的 qn 切换（原画/蓝光/超清/高清/流畅），切不到会提示；暂停后继续会跳回最新画面
 - 弹幕：宿主用 B 站弹幕 WebSocket 协议订阅直播间；`getDanmuInfo` 被风控（`-352`）时退回历史弹幕接口，输出面板里会打印原因
+- 输出面板的自动滚动由 `bilibiliPlayer.danmakuAutoScroll` 控制（默认关掉 VS Code 的智能滚动）
 
 ## 输出面板
 

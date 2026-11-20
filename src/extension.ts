@@ -150,11 +150,16 @@ async function initServices(context: vscode.ExtensionContext): Promise<Services>
       return items;
     },
     onDanmaku: (items, live) => {
-      for (const item of items) {
-        log(live ? `${item.text}` : `${formatClock(item.time)} ${item.text}`, '弹幕');
+      if (items.length === 0) {
+        return;
       }
+      ensureDanmakuScroll();
+      logLines(
+        items.map((item) => (live ? item.text : `${formatClock(item.time)} ${item.text}`)),
+        '弹幕',
+      );
     },
-    getLiveRoom: (input) => fetchLiveRoom(auth.client(), input),
+    getLiveRoom: (input, qn) => fetchLiveRoom(auth.client(), input, qn),
     getLiveDanmaku: (roomId) => liveDanmaku.poll(roomId),
     loginQr: () => auth.generateQr(),
     loginPoll: (key) => auth.pollQr(key),
@@ -550,15 +555,60 @@ async function requireServices(): Promise<Services> {
 
 type LogTag = '启动' | '皮肤' | '播放' | '弹幕' | '客户端' | '错误';
 
+function clockNow(): string {
+  const now = new Date();
+  return [now.getHours(), now.getMinutes(), now.getSeconds()]
+    .map((value) => String(value).padStart(2, '0'))
+    .join(':');
+}
+
 function log(message: string, tag?: LogTag): void {
   try {
-    const now = new Date();
-    const time = [now.getHours(), now.getMinutes(), now.getSeconds()]
-      .map((value) => String(value).padStart(2, '0'))
-      .join(':');
+    const time = clockNow();
     output?.appendLine(tag ? `[${time}] [${tag}] ${message}` : `[${time}] ${message}`);
   } catch {
     // 重载窗口时输出通道可能已关闭，不能让它中断注入/还原流程
+  }
+}
+
+/** 一批日志合成一次 append：输出面板只刷一帧，跟随滚动更稳。 */
+function logLines(messages: string[], tag?: LogTag): void {
+  if (messages.length === 0) {
+    return;
+  }
+  try {
+    const time = clockNow();
+    const prefix = tag ? `[${tag}] ` : '';
+    output?.append(`${messages.map((message) => `[${time}] ${prefix}${message}`).join('\n')}\n`);
+  } catch {
+    // 同上
+  }
+}
+
+let danmakuScrollReady = false;
+
+/**
+ * VS Code 的「智能滚动」会在用户点过输出面板后锁住滚动，
+ * 弹幕一条条追加时看起来就是“不自动滚到底部”。这里按设置关掉它。
+ */
+function ensureDanmakuScroll(): void {
+  if (danmakuScrollReady) {
+    return;
+  }
+  danmakuScrollReady = true;
+  try {
+    if (!getSettings().danmakuAutoScroll) {
+      return;
+    }
+    const config = vscode.workspace.getConfiguration('output');
+    if (config.get<boolean>('smartScroll.enabled', true)) {
+      void config.update('smartScroll.enabled', false, vscode.ConfigurationTarget.Global).then(
+        () => log('已关闭 output.smartScroll.enabled，弹幕会保持滚动到底部（可在设置里改回）', '弹幕'),
+        () => undefined,
+      );
+    }
+  } catch {
+    // 读取/写入设置失败时忽略
   }
 }
 
