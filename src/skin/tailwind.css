@@ -183,6 +183,7 @@
 }
 
 .bili-pill {
+  position: relative;
   pointer-events: auto;
   display: flex;
   align-items: center;
@@ -239,8 +240,21 @@
   display: none;
 }
 
+/*
+ * 收起过程中按钮要贴着右边缘不动，否则居中布局会让它一边缩小一边往右挪，
+ * 看起来和 width 收缩速度对不上。绝对定位后右边缘始终距外框 6px，
+ * 最终 40px 胶囊里左右各 6px，正好居中。
+ */
 .bili-pill[data-mini='true'] .bili-mini-btn {
   display: inline-flex;
+  position: absolute;
+  right: 5px;
+  top: 50%;
+  transform: translateY(-50%);
+}
+
+.bili-pill[data-mini='true'] .bili-mini-btn:active {
+  transform: translateY(-50%) scale(0.94);
 }
 
 /* 收进迷你时三个点转一圈 */
