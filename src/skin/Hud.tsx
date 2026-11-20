@@ -23,6 +23,7 @@ import {
   Volume,
   X,
 } from '@ricons/tabler';
+import { ChevronRight20Filled } from '@ricons/fluent';
 import { MoreHorizTwotone } from '@ricons/material';
 import { Toaster, toast } from 'sonner';
 import { parseVideoInput } from '../bilibili/parse';
@@ -371,16 +372,12 @@ export function Hud({ config, videoHost }: HudProps) {
     }
   }, [visible]);
 
-  // 面板展开时胶囊保持宽条；收起后如果鼠标不在 HUD 上就回到迷你。
+  // 面板展开时胶囊保持宽条；收起/迷你状态完全由按钮控制，不再跟随 hover。
   useEffect(() => {
     if (open) {
       setPillWide(true);
-      return;
     }
-    if (pillWide && !hudHovered) {
-      setPillWide(false);
-    }
-  }, [open, pillWide, hudHovered]);
+  }, [open]);
 
   // 自动播放策略：用户第一次点击/按键时，在真实手势里再尝试播放独立音轨/取消静音。
   useEffect(() => {
@@ -1957,6 +1954,15 @@ export function Hud({ config, videoHost }: HudProps) {
               <span className="bp-min-w-0 bp-flex-1 bp-truncate bp-text-[12px] bili-text">
                 {info?.title ?? 'B站视频皮肤'}
               </span>
+              <button
+                type="button"
+                className="bili-icon-btn"
+                title="收起到迷你胶囊"
+                aria-label="收起到迷你胶囊"
+                onClick={() => setPillWide(false)}
+              >
+                <ChevronRight20Filled width={14} height={14} />
+              </button>
               <button
                 type="button"
                 className="bili-icon-btn"

@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.4.19
+
+- 宽胶囊在设置按钮左侧新增 `ChevronRight20Filled` 按钮，点击收起到迷你胶囊
+- 移除“鼠标移开宽胶囊自动变迷你”的逻辑；宽/迷你现在完全由按钮控制（迷你里的 MoreHoriz 展开，宽胶囊里的 ChevronRight 收起）
+- 使用 `@ricons/fluent` 的 `ChevronRight20Filled`，与图标名一致
+
 ## 0.4.18
 
 - 加载视频/切换画质时，迷你胶囊的 MoreHoriz 图标、宽胶囊播放按钮、设置面板播放按钮统一显示 spinner
