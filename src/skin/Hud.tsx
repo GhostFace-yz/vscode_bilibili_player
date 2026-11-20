@@ -441,7 +441,7 @@ export function Hud({ config, videoHost }: HudProps) {
 
   const refreshPlayInfo = useCallback(() => {
     const ref = stateRef.current?.video;
-    if (!ref) {
+    if (!ref || !visibleRef.current) {
       return;
     }
     pendingSeek.current = videoRef.current?.currentTime ?? 0;
@@ -452,30 +452,34 @@ export function Hud({ config, videoHost }: HudProps) {
     ? `${state.video.bvid ?? `av${state.video.aid ?? ''}`}:${state.video.page ?? 1}`
     : '';
 
+  // 还没连上本地服务时什么都不显示：卸载/禁用扩展后残留的注入不会弹出空设置面板。
+  // 默认关闭时也不去拉 playurl / 转码音轨，等执行「开启」后再加载。
+  const visible = state?.visible ?? false;
+  visibleRef.current = visible;
+
+  useEffect(() => {
+    if (visible) {
+      return;
+    }
+    // 关掉后允许下次「开启」重新加载同一个视频。
+    requestedKey.current = '';
+    videoRef.current?.pause();
+    audioRef.current?.pause();
+  }, [visible]);
+
   useEffect(() => {
     const ref = state?.video;
-    if (!ref || !videoKey || requestedKey.current === videoKey) {
+    if (!visible || !ref || !videoKey || requestedKey.current === videoKey) {
       return;
     }
     requestedKey.current = videoKey;
     setInput(ref.bvid ?? `av${ref.aid ?? ''}`);
     void load(ref, settingsRef.current.quality);
-  }, [videoKey, state, load]);
-
-  // 还没连上本地服务时什么都不显示：卸载/禁用扩展后残留的注入不会弹出空设置面板。
-  const visible = state?.visible ?? false;
-  visibleRef.current = visible;
+  }, [visible, videoKey, state, load]);
 
   useEffect(() => {
     document.body.classList.toggle('bili-skin-on', visible);
     return () => document.body.classList.remove('bili-skin-on');
-  }, [visible]);
-
-  useEffect(() => {
-    if (!visible) {
-      videoRef.current?.pause();
-      audioRef.current?.pause();
-    }
   }, [visible]);
 
   // 隐藏播放模式 / 胶囊展开都依赖“鼠标是否在 HUD 上”。

@@ -53,7 +53,9 @@ pnpm run vsix     # 生成 bili-in-code-<version>.vsix
 | `bili-in-code: 关闭（还原工作台）` | 移除注入、恢复 CSP 与校验和（`Cmd/Ctrl+Alt+Shift+B`） |
 | `bili-in-code: 打开控制台` | 打开「Bilibili 皮肤」输出面板，查看弹幕和日志 |
 
-> 开启皮肤会修改 VS Code 安装目录里的 `workbench.html` 并同步 `product.json` 校验和。VS Code 升级覆盖这个文件后，扩展会在下次启动时按上次状态自动补回注入。
+> 皮肤默认关闭：每次打开 VS Code 或重载窗口后都不会自动显示，执行「开启」才出现。
+>
+> 开启皮肤会修改 VS Code 安装目录里的 `workbench.html` 并同步 `product.json` 校验和。VS Code 升级覆盖这个文件后，扩展会在下次启动时自动补回注入，但皮肤仍保持关闭，执行「开启」才显示。
 >
 > 应用后如果右下角出现「Code 安装似乎损坏」，这是当前进程缓存了旧校验和导致的误报：完全退出 VS Code 再打开就恢复正常，皮肤本身不受影响。
 >

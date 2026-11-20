@@ -23,6 +23,8 @@ const TOKEN_KEY = 'bilibiliPlayer.apiToken';
 const SKIN_VERSION_KEY = 'bilibiliPlayer.skinVersion';
 /** 用户是否开过皮肤：VS Code 升级会覆盖 workbench.html，靠它决定要不要自动补回注入。 */
 const ENABLED_KEY = 'bilibiliPlayer.enabledIntent';
+/** 应用补丁后的那一次重载要自动显示；之后每次启动都默认关闭，等用户执行「开启」。 */
+const SHOW_ONCE_KEY = 'bilibiliPlayer.showOnce';
 
 interface Services {
   auth: BiliAuth;
@@ -218,8 +220,13 @@ async function initServices(context: vscode.ExtensionContext): Promise<Services>
   const install = locateWorkbench(vscode.env.appRoot, vscode.version);
   const patched = Boolean(install && isPatched(install));
   if (patched) {
-    // workbench 里还有注入就说明上次是开着的：新窗口直接显示，不用再手动执行“开启”。
-    await started.state.patch({ visible: true });
+    // 默认关闭：每次进 VS Code 都从关闭状态开始，只有执行「开启」才显示。
+    // 只有刚应用完补丁的那次重载例外（showOnce），否则首次开启会看不到效果。
+    const showOnce = context.globalState.get<boolean>(SHOW_ONCE_KEY, false);
+    await started.state.patch({ visible: showOnce });
+    if (showOnce) {
+      await context.globalState.update(SHOW_ONCE_KEY, false);
+    }
     await context.globalState.update(ENABLED_KEY, true);
   }
   await syncSkinConfig(context, started);
@@ -264,11 +271,11 @@ async function reapplyAfterUpdate(
       cacheKey: String(Date.now()),
       log,
     });
-    await started.state.patch({ visible: true });
+    await started.state.patch({ visible: false });
     await context.globalState.update(SKIN_VERSION_KEY, version);
     log('workbench.html 被更新覆盖，已自动重新注入皮肤（重载窗口后生效）。', '皮肤');
     void vscode.window
-      .showInformationMessage('已自动恢复 B 站皮肤（VS Code 升级会覆盖工作台文件），重载窗口后生效。', '重载窗口')
+      .showInformationMessage('已自动恢复 B 站皮肤注入，重载窗口后执行「开启」即可显示。', '重载窗口')
       .then((choice) => {
         if (choice) {
           void vscode.commands.executeCommand('workbench.action.reloadWindow');
@@ -450,6 +457,7 @@ async function runApply(context: vscode.ExtensionContext): Promise<void> {
     await started.state.patch({ visible: true });
     applyPatch(install, assets, { backupRoot, cacheKey: String(Date.now()), log });
     await context.globalState.update(ENABLED_KEY, true);
+    await context.globalState.update(SHOW_ONCE_KEY, true);
     await context.globalState.update(SKIN_VERSION_KEY, String(context.extension.packageJSON.version ?? '0.0.0'));
     log(`皮肤已应用到 ${install.htmlPath}`, '皮肤');
 
@@ -519,6 +527,7 @@ async function runRestore(context: vscode.ExtensionContext): Promise<void> {
 
     restorePatch(install, { log });
     await context.globalState.update(ENABLED_KEY, false);
+    await context.globalState.update(SHOW_ONCE_KEY, false);
     await context.globalState.update(SKIN_VERSION_KEY, undefined);
     log('已还原工作台。', '皮肤');
 
