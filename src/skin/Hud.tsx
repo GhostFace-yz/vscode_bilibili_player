@@ -2930,7 +2930,7 @@ export function Hud({ config, videoHost }: HudProps) {
                   setPillWide(true);
                   setPillExpanding(true);
                   window.clearTimeout(pillExpandTimer.current);
-                  pillExpandTimer.current = window.setTimeout(() => setPillExpanding(false), 800);
+                  pillExpandTimer.current = window.setTimeout(() => setPillExpanding(false), 1040);
                 }}
               >
                 {busy ? <span className="bili-spinner" /> : <MoreHorizTwotone width={16} height={16} />}

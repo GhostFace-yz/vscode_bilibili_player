@@ -196,7 +196,8 @@
   /* 左右和上下留一样的边距（5px padding + 1px border = 6px），
      收起时按钮和边框的相对速度才一致 */
   padding: 5px;
-  transition: width 760ms cubic-bezier(0.22, 1, 0.36, 1), padding 760ms cubic-bezier(0.22, 1, 0.36, 1);
+  /* easeOutQuint 前 200ms 就走完 ~70%，看起来“唰”一下；改成较慢的 ease-in-out。 */
+  transition: width 1000ms cubic-bezier(0.4, 0, 0.2, 1), padding 1000ms cubic-bezier(0.4, 0, 0.2, 1);
   border: 1px solid var(--bili-border);
   border-radius: 999px;
   background: var(--bili-glass-bg);
@@ -259,7 +260,7 @@
 
 /* 收进迷你时三个点转一圈 */
 .bili-pill[data-mini='true'] .bili-mini-btn svg {
-  animation: bili-mini-spin 760ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation: bili-mini-spin 1000ms cubic-bezier(0.4, 0, 0.2, 1) both;
 }
 
 @keyframes bili-mini-spin {
@@ -277,7 +278,7 @@
  * 避免动画结束后内容整块跳出。
  */
 .bili-pill[data-expanding='true'] .bili-pill-play svg {
-  animation: bili-expand-spin 760ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation: bili-expand-spin 1000ms cubic-bezier(0.4, 0, 0.2, 1) both;
 }
 
 @keyframes bili-expand-spin {
