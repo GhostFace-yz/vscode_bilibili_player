@@ -5,7 +5,7 @@ import * as vscode from 'vscode';
 import { BiliAuth, type SecretStore } from './bilibili/auth';
 import { parseVideoInput, describeVideo } from './bilibili/parse';
 import { getPlayInfo } from './bilibili/playurl';
-import { getSettings } from './config';
+import { getSettings, migrateLegacyFitSetting } from './config';
 import { findAudioTranscoder } from './server/audioTranscode';
 import { startApiServer, type ApiServerHandle } from './server/apiServer';
 import { renderSkinConfig, type SkinConfig } from './shared/types';
@@ -50,6 +50,8 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.commands.registerCommand('bilibiliPlayer.fixChecksums', () => runFixChecksums()),
     vscode.commands.registerCommand('bilibiliPlayer.showLog', () => output.show(true)),
   );
+
+  void migrateLegacyFitSetting().catch(() => undefined);
 
   services = initServices(context).catch((error: unknown) => {
     log(`初始化失败：${toMessage(error)}`);

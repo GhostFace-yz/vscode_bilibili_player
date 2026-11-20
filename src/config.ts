@@ -32,6 +32,15 @@ export function getSkinSettings(): SkinSettings {
   return { opacity, blur, dim, fit, muted, autoplay, quality, hiddenMode, cropBars };
 }
 
+/** 0.5.0 起 fit 只剩 full / mini，把老版本的 cover/contain/fill 写回 full，避免设置界面显示无效值。 */
+export async function migrateLegacyFitSetting(): Promise<void> {
+  const config = vscode.workspace.getConfiguration('bilibiliPlayer');
+  const current = config.get<string>('fit');
+  if (current && !FIT_MODES.includes(current as FitMode)) {
+    await config.update('fit', 'full', vscode.ConfigurationTarget.Global);
+  }
+}
+
 export async function updateSkinSettings(patch: Partial<SkinSettings>): Promise<void> {
   const config = vscode.workspace.getConfiguration('bilibiliPlayer');
   const updates: Thenable<void>[] = [];
