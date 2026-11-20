@@ -24,6 +24,11 @@ const FFMPEG_CANDIDATES = [
 let cachedMp3: AudioTranscoder | null | undefined;
 let cachedWav: AudioTranscoder | null | undefined;
 
+/** 找到可用的 ffmpeg（音频转码、画面黑边探测共用）。 */
+export function findFfmpegBinary(): string | null {
+  return FFMPEG_CANDIDATES.find(isExecutable) ?? findInPath('ffmpeg') ?? null;
+}
+
 export function findAudioTranscoder(prefer: 'mp3' | 'wav' = 'mp3'): AudioTranscoder | null {
   const ffmpeg = FFMPEG_CANDIDATES.find(isExecutable) ?? findInPath('ffmpeg');
 

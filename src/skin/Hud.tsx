@@ -87,6 +87,9 @@ export function Hud({ config, videoHost }: HudProps) {
     right: number;
     bottom: number;
   } | null>(null);
+  const [topInset, setTopInset] = useState(0);
+  const [videoRatio, setVideoRatio] = useState(0);
+  const [contentAspect, setContentAspect] = useState(0);
   const [notice, setNotice] = useState<string | null>(null);
   const [audioReady, setAudioReady] = useState(false);
   const [audioBlocked, setAudioBlocked] = useState(false);
@@ -122,6 +125,12 @@ export function Hud({ config, videoHost }: HudProps) {
   mutedRef.current = muted;
   const volumeRef = useRef(volume);
   volumeRef.current = volume;
+
+  // 视频原始宽高比：metadata 加载完 / 切换清晰度后更新
+  const updateVideoRatio = useCallback((video: HTMLVideoElement) => {
+    const ratio = video.videoWidth > 0 && video.videoHeight > 0 ? video.videoWidth / video.videoHeight : 0;
+    setVideoRatio((previous) => (Math.abs(previous - ratio) < 0.0005 ? previous : ratio));
+  }, []);
 
   // 确保媒体元素的声音状态与 HUD 一致（自动播放/重新挂载时尤其重要）
   const applyMediaSettings = useCallback(() => {
@@ -596,6 +605,31 @@ export function Hud({ config, videoHost }: HudProps) {
     return () => video.removeEventListener('loadedmetadata', onMetadata);
   }, [srcUrl, applyMediaSettings, notePlayError]);
 
+  // 移除黑边：让扩展宿主用 ffmpeg 探测一次画面的真实宽高比（按 bvid:cid 缓存）。
+  // 关闭时不用探测，直接按 <video> 自带的 videoWidth / videoHeight 排布。
+  useEffect(() => {
+    setContentAspect(0);
+    if (!settings.cropBars || !info?.url || !info.cid) {
+      return;
+    }
+    let cancelled = false;
+    void api
+      .contentAspect(info.url, `${info.bvid}:${info.cid}`, info.duration)
+      .then((result) => {
+        if (cancelled || !result.ok || typeof result.aspect !== 'number') {
+          return;
+        }
+        // 明显离谱的比例说明探测失败，回退到视频原始比例
+        if (result.aspect > 0.2 && result.aspect < 5) {
+          setContentAspect(result.aspect);
+        }
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [api, settings.cropBars, info?.bvid, info?.cid, info?.url, info?.duration]);
+
   useEffect(() => {
     if (videoRef.current) {
       videoRef.current.muted = muted || Boolean(audioRef.current);
@@ -901,6 +935,28 @@ export function Hud({ config, videoHost }: HudProps) {
       if (rect.width < 2 || rect.height < 2) {
         return;
       }
+
+      // 视频从代码文本区的上边缘开始：让出标签栏（content 里可能包含它）和面包屑，
+      // 否则画面顶部会被它们盖住。
+      let inset = 0;
+      for (const editor of Array.from(target.querySelectorAll<HTMLElement>('.editor-container'))) {
+        const editorRect = editor.getBoundingClientRect();
+        if (editorRect.width > 2 && editorRect.height > 2) {
+          inset = Math.max(inset, editorRect.top - rect.top);
+        }
+      }
+      if (inset <= 0) {
+        // 没有 .editor-container 时退回到面包屑底边
+        for (const crumbs of Array.from(target.querySelectorAll<HTMLElement>('.breadcrumbs-control'))) {
+          const crumbsRect = crumbs.getBoundingClientRect();
+          if (crumbsRect.width > 2 && crumbsRect.height > 2) {
+            inset = Math.max(inset, crumbsRect.bottom - rect.top);
+          }
+        }
+      }
+      // 至少留一点空隙，别贴着上边缘
+      inset = Math.max(inset, 8);
+      setTopInset((previous) => (Math.abs(previous - inset) < 0.5 ? previous : Math.round(inset)));
 
       // 右侧代码地图（minimap）会盖在视频上：把视频右边界收窄到 minimap 左缘。
       // 取最靠右、且贴着编辑器右缘的那一个，兼容分屏和 minimap 在左侧的配置。
@@ -1546,8 +1602,34 @@ export function Hud({ config, videoHost }: HudProps) {
     '--bili-opacity': revealVideo ? settings.opacity : 0,
     '--bili-blur': revealVideo ? `${settings.blur}px` : '0px',
     '--bili-dim': revealVideo ? settings.dim : 1,
-    '--bili-fit': settings.fit,
   } as CSSProperties;
+
+  /**
+   * 完整模式：视频按画面宽高比在编辑区里排布。
+   * - 宽度铺满编辑区，高度 = 宽度 / 宽高比
+   * - 高度超出可用高度时反过来按高度缩放（保证完整可见）
+   * - 顶部让出标签栏/面包屑的高度，横向居中，剩下的区域露出编辑器背景色
+   */
+  const ratio = contentAspect > 0 ? contentAspect : videoRatio > 0 ? videoRatio : 16 / 9;
+  const videoBox = (() => {
+    if (!editorBounds) {
+      return null;
+    }
+    const availableWidth = editorBounds.width;
+    const availableHeight = Math.max(2, editorBounds.height - topInset);
+    let width = availableWidth;
+    let height = width / ratio;
+    if (height > availableHeight) {
+      height = availableHeight;
+      width = height * ratio;
+    }
+    return {
+      left: Math.max(0, Math.round((availableWidth - width) / 2)),
+      top: Math.round(topInset),
+      width: Math.max(2, Math.round(width)),
+      height: Math.max(2, Math.round(height)),
+    };
+  })();
 
   const qualityLabel =
     info?.qualities.find((quality) => quality.qn === info.quality)?.desc ??
@@ -1573,15 +1655,18 @@ export function Hud({ config, videoHost }: HudProps) {
         <video
           ref={videoRef}
           className="bili-video"
+          style={videoBox ?? undefined}
           src={srcUrl}
           muted={muted || Boolean(audioSrc)}
           playsInline
           preload="auto"
           onLoadedMetadata={(event) => {
             applyMediaSettings();
+            updateVideoRatio(event.currentTarget);
             setDuration(event.currentTarget.duration || 0);
             syncAudio();
           }}
+          onResize={(event) => updateVideoRatio(event.currentTarget)}
           onTimeUpdate={(event) => {
             setCurrentTime(event.currentTarget.currentTime);
             if (!event.currentTarget.paused) {
@@ -1815,15 +1900,20 @@ export function Hud({ config, videoHost }: HudProps) {
                   </Select>
                   <Select
                     value={settings.fit}
-                    onValueChange={(value) => updateSettings({ fit: value as SkinSettings['fit'] })}
+                    onValueChange={(value) => {
+                      const fit = value as SkinSettings['fit'];
+                      if (fit === 'mini') {
+                        toast.info('小屏模式还在做，先按完整模式显示');
+                      }
+                      updateSettings({ fit });
+                    }}
                   >
-                    <SelectTrigger className="bili-select-trigger bili-fit-trigger" aria-label="铺满方式">
+                    <SelectTrigger className="bili-select-trigger bili-fit-trigger" aria-label="显示方式">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="cover">铺满</SelectItem>
-                      <SelectItem value="contain">完整</SelectItem>
-                      <SelectItem value="fill">拉伸</SelectItem>
+                      <SelectItem value="full">完整</SelectItem>
+                      <SelectItem value="mini">小屏</SelectItem>
                     </SelectContent>
                   </Select>
                     </>
@@ -1904,6 +1994,20 @@ export function Hud({ config, videoHost }: HudProps) {
               />
 
               <div className="bp-flex bp-items-center bp-justify-between bp-gap-3 bili-divider-t bp-pt-2.5">
+                <div className="bp-min-w-0">
+                  <div className="bp-text-[12px]">移除黑边</div>
+                  <div className="bp-text-[10px] bili-muted">
+                    探测画面真实比例后裁掉片源黑边（首次检测约 1-2 秒）
+                  </div>
+                </div>
+                <Switch
+                  checked={settings.cropBars}
+                  onCheckedChange={(checked) => updateSettings({ cropBars: checked })}
+                  aria-label="移除黑边"
+                />
+              </div>
+
+              <div className="bp-flex bp-items-center bp-justify-between bp-gap-3">
                 <div className="bp-min-w-0">
                   <div className="bp-text-[12px]">隐藏播放模式</div>
                   <div className="bp-text-[10px] bili-muted">

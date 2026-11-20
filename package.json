@@ -2,7 +2,7 @@
   "name": "vscode-bilibili-player",
   "displayName": "Bilibili 视频皮肤",
   "description": "把 B 站视频铺在 VS Code 工作台背景层播放，边写代码边看视频。",
-  "version": "0.4.23",
+  "version": "0.5.0",
   "packageManager": "pnpm@10.32.1",
   "icon": "media/logo.png",
   "publisher": "GhostFace-yz",
@@ -126,12 +126,21 @@
         "bilibiliPlayer.fit": {
           "type": "string",
           "enum": [
-            "cover",
-            "contain",
-            "fill"
+            "full",
+            "mini"
           ],
-          "default": "cover",
-          "description": "视频铺满屏幕的方式。",
+          "enumDescriptions": [
+            "完整：按视频宽高比在编辑区完整显示，其余区域保留编辑器背景",
+            "小屏：预留，暂未实现"
+          ],
+          "default": "full",
+          "description": "视频在编辑区里的显示方式。",
+          "order": 5
+        },
+        "bilibiliPlayer.cropBars": {
+          "type": "boolean",
+          "default": true,
+          "description": "移除黑边：用 ffmpeg 探测视频画面的真实宽高比，按内容比例排布并裁掉视频自带的黑边。关闭后按视频原始宽高比显示（黑边保留）。",
           "order": 5
         },
         "bilibiliPlayer.muted": {

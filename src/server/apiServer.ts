@@ -5,6 +5,7 @@ import * as path from 'node:path';
 import { Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import { findAudioTranscoder, type AudioTranscoder } from './audioTranscode';
+import { detectContentAspect, type ContentAspect } from './contentAspect';
 import { TEST_TONE_MP3 } from './tone';
 import { PORT_RANGE } from '../shared/types';
 import type {
@@ -19,6 +20,9 @@ import type {
 export const API_VERSION = 2;
 
 let lastDiagnostics: { at: number; payload: unknown } | null = null;
+/** 画面宽高比探测结果：key = bvid:cid（探测很慢，必须复用） */
+const contentAspectCache = new Map<string, ContentAspect | null>();
+const contentAspectInflight = new Map<string, Promise<ContentAspect | null>>();
 const diagnosticsHistory: { at: number; payload: unknown }[] = [];
 const DIAGNOSTICS_HISTORY_LIMIT = 600;
 
@@ -135,6 +139,19 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
     };
     const info = await deps.getPlayInfo(ref, qn);
     sendJson(res, 200, info);
+    return;
+  }
+
+  if (path === '/api/content-aspect' && req.method === 'GET') {
+    const videoUrl = url.searchParams.get('url');
+    if (!videoUrl) {
+      sendJson(res, 400, { error: '缺少 url 参数' });
+      return;
+    }
+    const key = url.searchParams.get('key') ?? videoUrl;
+    const duration = toInt(url.searchParams.get('duration')) ?? 0;
+    const aspect = await resolveContentAspect(key, videoUrl, duration, deps);
+    sendJson(res, 200, aspect ? { ok: true, ...aspect } : { ok: false });
     return;
   }
 
@@ -611,4 +628,45 @@ function listen(server: http.Server, port: number): Promise<void> {
 
 function isAddrInUse(error: unknown): boolean {
   return typeof error === 'object' && error !== null && (error as NodeJS.ErrnoException).code === 'EADDRINUSE';
+}
+
+async function resolveContentAspect(
+  key: string,
+  videoUrl: string,
+  duration: number,
+  deps: ApiServerDeps,
+): Promise<ContentAspect | null> {
+  const cached = contentAspectCache.get(key);
+  if (cached !== undefined) {
+    return cached;
+  }
+
+  const inflight = contentAspectInflight.get(key);
+  if (inflight) {
+    return inflight;
+  }
+
+  const task = detectContentAspect(videoUrl, duration)
+    .then((result) => {
+      contentAspectCache.set(key, result);
+      if (result) {
+        deps.log?.(
+          `画面宽高比探测：${key} → ${result.width}x${result.height} (${result.aspect.toFixed(3)}${result.cropped ? '，已裁黑边' : '，无黑边'})`,
+        );
+      } else {
+        deps.log?.(`画面宽高比探测失败：${key}，回退到视频原始比例`);
+      }
+      return result;
+    })
+    .catch((error: unknown) => {
+      deps.log?.(`画面宽高比探测异常：${error instanceof Error ? error.message : String(error)}`);
+      contentAspectCache.set(key, null);
+      return null;
+    })
+    .finally(() => {
+      contentAspectInflight.delete(key);
+    });
+
+  contentAspectInflight.set(key, task);
+  return task;
 }

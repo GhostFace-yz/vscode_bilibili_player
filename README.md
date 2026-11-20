@@ -11,7 +11,7 @@
 - **真·皮肤**：视频层 `z-index: -1`，代码浮在视频上；只有编辑区透明，侧边栏、终端、状态栏保持主题不透明并正常遮挡
 - **直连播放**：≤720P 用 B 站 mp4 durl；1080P/1080P+ 自动切到 DASH 视频流 + 独立音轨，`<video>`/`<audio>` 原生播放并同步，支持播放/暂停/进度/音量
 - **扫码登录**：HUD 内生成二维码，Cookie 存 VS Code `SecretStorage`；未登录也可播放 480P/720P（取决于视频）
-- **HUD 控制**：播放/暂停、进度、音量、静音、清晰度、铺满方式、透明度、模糊、暗化、换 BV、收起、隐藏
+- **HUD 控制**：播放/暂停、进度、音量、静音、清晰度、显示方式、透明度、模糊、暗化、移除黑边、换 BV、收起、隐藏
 - **跟随 VS Code 主题**：HUD、视频层、下拉、按钮、提示、弹窗全部由当前主题的 `--vscode-*` 颜色变量驱动（变量在 `.monaco-workbench` 上，HUD 和 Portal 都挂在其中），切换主题即时生效；只有「大会员」标签保留 B 站粉
 - **音画同步**：DASH 独立音轨每 250ms 校准，暂停、拖动、缓冲时同时暂停音频；切换清晰度会清理旧音轨
 - **视频只铺编辑区**：视频层跟随编辑器内容区域（侧边栏/终端/聊天栏会正常遮挡），HUD 也贴在编辑区右下角
@@ -118,7 +118,8 @@ VS Code 自带的 `libffmpeg` 没有 AAC 解码器（只有 mp3 / flac / vorbis 
 | `bilibiliPlayer.opacity` | `0.5` | 视频层不透明度 |
 | `bilibiliPlayer.blur` | `2` | 视频模糊半径（px） |
 | `bilibiliPlayer.dim` | `0.25` | 暗化层强度；使用当前编辑器背景色，100% 时完全回到原编辑区颜色 |
-| `bilibiliPlayer.fit` | `cover` | `cover` / `contain` / `fill` |
+| `bilibiliPlayer.fit` | `full` | `full`（完整：按宽高比完整显示）/ `mini`（小屏，暂未实现） |
+| `bilibiliPlayer.cropBars` | `true` | 移除黑边：用 ffmpeg 探测画面真实宽高比后裁掉片源自带的黑边 |
 | `bilibiliPlayer.muted` | `true` | 静音播放 |
 | `bilibiliPlayer.autoplay` | `true` | 自动播放 |
 | `bilibiliPlayer.quality` | `80` | 期望清晰度（未登录通常回落到 720P/480P） |
@@ -131,7 +132,7 @@ VS Code 自带的 `libffmpeg` 没有 AAC 解码器（只有 mp3 / flac / vorbis 
 - **TypeScript**：扩展宿主 + 注入脚本 + React HUD
 - **React 19 + Tailwind CSS 3**：HUD。Tailwind 关闭了 preflight、类名加 `bp-` 前缀、作用域限定在 `#bili-skin-hud`，避免重置 VS Code 工作台样式
 - **xicons / @ricons/tabler**：HUD 图标（播放、音量、收起、上下集、刷新等）
-- **shadcn-style Radix Select / Button**：清晰度、铺满方式、选集下拉，以及重试/刷新等按钮
+- **shadcn-style Radix Select / Button**：清晰度、显示方式、选集下拉，以及重试/刷新等按钮
 - **主题变量**：所有 HUD 颜色取自 `--vscode-foreground` / `--vscode-editorWidget-background` / `--vscode-button-*` 等，自动适配深色、浅色和高对比度主题
 - **GSAP + @gsap/react**：HUD 收起/展开、登录弹窗、切换动效
 - **esbuild**：扩展（CJS / Node）与皮肤（IIFE / 浏览器）双产物

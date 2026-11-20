@@ -271,7 +271,7 @@
         opacity: 0.38,
         blur: 0,
         dim: 0.04,
-        fit: 'cover',
+        fit: 'full',
         muted: false,
         autoplay: false,
         quality: 80,
@@ -364,6 +364,9 @@
       }
       if (path.endsWith('/api/logout')) {
         return json({ ok: true });
+      }
+      if (path.endsWith('/api/content-aspect')) {
+        return json({ ok: true, width: 1920, height: 960, aspect: 2, cropped: true });
       }
       return json({ error: 'not found' }, 404);
     };

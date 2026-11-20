@@ -17,6 +17,14 @@ interface ApiError extends Error {
  * 访问扩展宿主里的本地 API。
  * 多窗口/端口变化时自动在 17321-17330 之间寻找可用实例。
  */
+export interface ContentAspectResult {
+  ok: boolean;
+  width?: number;
+  height?: number;
+  aspect?: number;
+  cropped?: boolean;
+}
+
 export class SkinApi {
   private preferredPort: number;
   private readonly verifiedPorts = new Set<number>();
@@ -50,6 +58,12 @@ export class SkinApi {
     }
     params.set('qn', String(qn));
     return this.request<PlayInfo>(`/api/play?${params.toString()}`);
+  }
+
+  /** 让扩展宿主用 ffmpeg 探测画面真实宽高比（去掉视频里烘焙的黑边）。 */
+  contentAspect(url: string, key: string, duration: number): Promise<ContentAspectResult> {
+    const params = new URLSearchParams({ url, key, duration: String(Math.round(duration)) });
+    return this.request<ContentAspectResult>(`/api/content-aspect?${params.toString()}`);
   }
 
   diagnostics(payload: unknown): Promise<{ ok: boolean }> {

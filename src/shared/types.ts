@@ -9,7 +9,8 @@ export interface VideoRef {
 
 export const PORT_RANGE = [17321, 17322, 17323, 17324, 17325, 17326, 17327, 17328, 17329, 17330];
 
-export type FitMode = 'cover' | 'contain' | 'fill';
+/** 铺满方式：完整 = 按视频宽高比在编辑区里完整显示；小屏 = 预留（暂未实现） */
+export type FitMode = 'full' | 'mini';
 
 export interface SkinSettings {
   opacity: number;
@@ -21,6 +22,8 @@ export interface SkinSettings {
   quality: number;
   /** 隐藏播放模式：只有鼠标悬停 HUD 时才按设置显示视频，否则暗化 100%、透明 0% */
   hiddenMode: boolean;
+  /** 移除黑边：用 ffmpeg 探测画面真实宽高比，按内容比例排布并裁掉视频自带的黑边 */
+  cropBars: boolean;
 }
 
 export interface BiliUser {
@@ -105,11 +108,12 @@ export const DEFAULT_SKIN_SETTINGS: SkinSettings = {
   opacity: 0.5,
   blur: 2,
   dim: 0.25,
-  fit: 'cover',
+  fit: 'full',
   muted: true,
   autoplay: true,
   quality: 80,
   hiddenMode: false,
+  cropBars: true,
 };
 
 export function renderSkinConfig(config: SkinConfig): string {

@@ -6,7 +6,7 @@ export interface BilibiliPlayerSettings extends SkinSettings {
   useIframePlayer: boolean;
 }
 
-const FIT_MODES: FitMode[] = ['cover', 'contain', 'fill'];
+const FIT_MODES: FitMode[] = ['full', 'mini'];
 const QUALITY_OPTIONS = [16, 32, 64, 74, 80, 112, 116, 120];
 
 export function getSettings(): BilibiliPlayerSettings {
@@ -17,18 +17,19 @@ export function getSettings(): BilibiliPlayerSettings {
     opacity: clamp(config.get<number>('opacity', 0.5), 0.05, 1),
     blur: clamp(config.get<number>('blur', 2), 0, 40),
     dim: clamp(config.get<number>('dim', 0.25), 0, 1),
-    fit: normalizeFit(config.get<string>('fit', 'cover')),
+    fit: normalizeFit(config.get<string>('fit', 'full')),
     muted: config.get<boolean>('muted', true),
     autoplay: config.get<boolean>('autoplay', true),
     quality: normalizeQuality(config.get<number>('quality', 80)),
     hiddenMode: config.get<boolean>('hiddenMode', false),
+    cropBars: config.get<boolean>('cropBars', true),
     useIframePlayer: config.get<boolean>('useIframePlayer', false),
   };
 }
 
 export function getSkinSettings(): SkinSettings {
-  const { opacity, blur, dim, fit, muted, autoplay, quality, hiddenMode } = getSettings();
-  return { opacity, blur, dim, fit, muted, autoplay, quality, hiddenMode };
+  const { opacity, blur, dim, fit, muted, autoplay, quality, hiddenMode, cropBars } = getSettings();
+  return { opacity, blur, dim, fit, muted, autoplay, quality, hiddenMode, cropBars };
 }
 
 export async function updateSkinSettings(patch: Partial<SkinSettings>): Promise<void> {
@@ -59,6 +60,9 @@ export async function updateSkinSettings(patch: Partial<SkinSettings>): Promise<
   if (typeof patch.hiddenMode === 'boolean') {
     updates.push(config.update('hiddenMode', patch.hiddenMode, vscode.ConfigurationTarget.Global));
   }
+  if (typeof patch.cropBars === 'boolean') {
+    updates.push(config.update('cropBars', patch.cropBars, vscode.ConfigurationTarget.Global));
+  }
 
   await Promise.all(updates);
 }
@@ -71,7 +75,11 @@ function clamp(value: number, min: number, max: number): number {
 }
 
 function normalizeFit(value: string): FitMode {
-  return FIT_MODES.includes(value as FitMode) ? (value as FitMode) : 'cover';
+  if (FIT_MODES.includes(value as FitMode)) {
+    return value as FitMode;
+  }
+  // cover / contain / fill 都是老版本的铺满方式，现在统一走“完整”
+  return 'full';
 }
 
 function normalizeQuality(value: number): number {
