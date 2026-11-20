@@ -1,4 +1,4 @@
-# vscode-bilibili-player
+# bili-in-code
 
 <img src="media/logo.png" width="120" align="right" alt="logo" />
 
@@ -17,7 +17,7 @@
 
 ## 下载
 
-到 [Releases](https://github.com/GhostFace-yz/vscode_bilibili_player/releases) 下载最新的 `vscode-bilibili-player-<version>.vsix`，或者按下面的「安装依赖」从源码构建。
+到 [Releases](https://github.com/GhostFace-yz/vscode_bilibili_player/releases) 下载最新的 `bili-in-code-<version>.vsix`，或者按下面的「安装依赖」从源码构建。
 
 ## 安装依赖
 
@@ -35,22 +35,22 @@
 
 ```bash
 pnpm install
-pnpm run vsix     # 生成 vscode-bilibili-player-<version>.vsix
+pnpm run vsix     # 生成 bili-in-code-<version>.vsix
 ```
 
 ## 启动
 
 1. 扩展面板右上角 `…` → **Install from VSIX…**，选择下载或构建出来的 vsix
-2. 命令面板（`Cmd/Ctrl+Shift+P`）执行 **vscode-bilibili-player: 开启**，确认「应用并重载」
+2. 命令面板（`Cmd/Ctrl+Shift+P`）执行 **bili-in-code: 开启**，确认「应用并重载」
 3. 重载后右下角出现控制条：输入 BV 号/视频链接播放，或点「扫码登录」；也可以打开「直播模式」看直播
-4. 想恢复原样：**vscode-bilibili-player: 关闭（还原工作台）**
+4. 想恢复原样：**bili-in-code: 关闭（还原工作台）**
 
 命令面板里只有三条命令：
 
 | 命令 | 作用 |
 | --- | --- |
-| `vscode-bilibili-player: 开启` | 注入皮肤并显示（`Cmd/Ctrl+Alt+B`） |
-| `vscode-bilibili-player: 关闭（还原工作台）` | 移除注入、恢复 CSP 与校验和（`Cmd/Ctrl+Alt+Shift+B`） |
-| `vscode-bilibili-player: 打开控制台` | 打开「Bilibili 皮肤」输出面板，查看弹幕和日志 |
+| `bili-in-code: 开启` | 注入皮肤并显示（`Cmd/Ctrl+Alt+B`） |
+| `bili-in-code: 关闭（还原工作台）` | 移除注入、恢复 CSP 与校验和（`Cmd/Ctrl+Alt+Shift+B`） |
+| `bili-in-code: 打开控制台` | 打开「Bilibili 皮肤」输出面板，查看弹幕和日志 |
 
 > 开启皮肤会修改 VS Code 安装目录里的 `workbench.html` 并同步 `product.json` 校验和，因此 VS Code 升级后需要重新执行一次「开启」；「关闭（还原工作台）」可以随时恢复，不会残留文件。

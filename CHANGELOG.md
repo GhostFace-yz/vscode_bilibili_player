@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.7.7
+
+- 扩展改名为 **bili-in-code**（`name` / `displayName` / 命令分类），因为原来的名字在应用商店已被占用
+- API 令牌额外持久化到 `~/.vscode-bili-player.token`：改扩展名、换 publisher 导致扩展 ID 变化时令牌保持不变，HUD 不会再因为令牌变化报 401
+- 启动时会优先读这个令牌文件，读不到再回退到 globalState / 新生成
+
 ## 0.7.6
 
 - 修复部分视频 1080P60 / 高码率画质报 `MEDIA_ERR_SRC_NOT_SUPPORTED`：这些 CDN 节点校验 `Referer`，无 Referer 直接 403，而渲染进程的 `<video>` 带不了 Referer。现在视频和音轨一样走扩展宿主代理（`/api/video`，转发 Range 并补上 Referer / UA），720P/360P 本来就能播的也会继续正常

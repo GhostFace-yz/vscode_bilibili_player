@@ -1,5 +1,6 @@
 import { randomBytes } from 'node:crypto';
 import * as fs from 'node:fs';
+import * as os from 'node:os';
 import * as path from 'node:path';
 import * as vscode from 'vscode';
 import { BiliAuth, type SecretStore } from './bilibili/auth';
@@ -239,13 +240,33 @@ async function ensureVisibleAfterUpdate(
   log(`皮肤版本 ${lastVersion ?? '未知'} → ${version}，已重新显示。`, '皮肤');
 }
 
+/**
+ * API 令牌：除了存在 globalState，还在用户目录留一份，
+ * 这样改扩展名/换 publisher 导致扩展 ID 变化时，令牌不会跟着变（否则 HUD 会 401）。
+ */
+function tokenFile(): string {
+  return path.join(os.homedir(), '.vscode-bili-player.token');
+}
+
 async function getOrCreateToken(context: vscode.ExtensionContext): Promise<string> {
-  const existing = context.globalState.get<string>(TOKEN_KEY);
-  if (existing) {
-    return existing;
+  const file = tokenFile();
+  try {
+    const fromFile = fs.readFileSync(file, 'utf8').trim();
+    if (fromFile) {
+      await context.globalState.update(TOKEN_KEY, fromFile);
+      return fromFile;
+    }
+  } catch {
+    // 还没有令牌文件
   }
 
-  const token = randomBytes(24).toString('hex');
+  const existing = context.globalState.get<string>(TOKEN_KEY);
+  const token = existing ?? randomBytes(24).toString('hex');
+  try {
+    fs.writeFileSync(file, `${token}\n`, { mode: 0o600 });
+  } catch {
+    // 写不了就继续用 globalState
+  }
   await context.globalState.update(TOKEN_KEY, token);
   return token;
 }
