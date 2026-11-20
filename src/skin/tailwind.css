@@ -255,7 +255,8 @@
  * 看起来和 width 收缩速度对不上。绝对定位后右边缘始终距外框 6px，
  * 最终 40px 胶囊里左右各 6px，正好居中。
  */
-.bili-pill[data-mini='true'] .bili-mini-btn {
+.bili-pill[data-mini='true'] .bili-mini-btn,
+.bili-pill[data-collapsing='true'] .bili-mini-btn {
   display: inline-flex;
   position: absolute;
   right: 5px;
@@ -263,12 +264,19 @@
   transform: translateY(-50%);
 }
 
-.bili-pill[data-mini='true'] .bili-mini-btn:active {
+.bili-pill[data-mini='true'] .bili-mini-btn:active,
+.bili-pill[data-collapsing='true'] .bili-mini-btn:active {
   transform: translateY(-50%) scale(0.94);
 }
 
+/* 点收起后立刻换成三点按钮，不用等 width 动画结束 */
+.bili-pill[data-collapsing='true'] .bili-collapse-btn {
+  visibility: hidden;
+}
+
 /* 收进迷你时三个点转一圈 */
-.bili-pill[data-mini='true'] .bili-mini-btn svg {
+.bili-pill[data-mini='true'] .bili-mini-btn svg,
+.bili-pill[data-collapsing='true'] .bili-mini-btn svg {
   animation: bili-mini-spin 760ms cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 

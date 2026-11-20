@@ -2934,7 +2934,7 @@ export function Hud({ config, videoHost }: HudProps) {
               </button>
               <button
                 type="button"
-                className="bili-icon-btn"
+                className="bili-icon-btn bili-collapse-btn"
                 title="收起到迷你胶囊"
                 aria-label="收起到迷你胶囊"
                 onClick={collapsePill}
