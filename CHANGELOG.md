@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.6.1
+
+- 宽胶囊最右侧的「隐藏皮肤」按钮换成弹幕开关（和设置面板里的弹幕按钮同一套状态，打开后高亮）
+- 宽胶囊去掉常驻的横向音量滑杆：改成悬停音量按钮时在按钮上方弹出竖直滑杆（portal 到 HUD 内，绕开胶囊的 `overflow: hidden`），点击按钮仍然是静音/取消静音
+- 滑杆让出的空间给标题：宽胶囊标题可用宽度变大；标题溢出时 hover 会来回滚动（GSAP timeline），不再弹原生 `title` tooltip
+- 设置面板右上角的关闭（隐藏皮肤）按钮移除；隐藏皮肤现在只能走 `Cmd/Ctrl+Alt+B` 或命令面板
+- 面板底部删除绿色状态点、「本地服务已连接/断开」、「测试声音」按钮
+- 删除测试音相关逻辑：`/api/test-tone.wav|mp3`、`src/server/tone.ts`、Web Audio 振荡器、`canPlayType`/`MediaSource` 探测和对应日志
+
 ## 0.6.0
 
 - 毛玻璃统一：迷你胶囊、宽胶囊、设置面板、登录弹窗都改用同一套 `--bili-glass-bg`（当前主题 `editorWidget` 背景色 72% + `blur(20px) saturate(1.25)`），不再是接近不透明的底色

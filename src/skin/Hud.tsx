@@ -146,17 +146,21 @@ export function Hud({ config, videoHost }: HudProps) {
   const [notice, setNotice] = useState<string | null>(null);
   const [audioReady, setAudioReady] = useState(false);
   const [audioBlocked, setAudioBlocked] = useState(false);
-  const [online, setOnline] = useState(true);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [open, setOpen] = useState(true);
   const [hudHovered, setHudHovered] = useState(false);
   const [pillWide, setPillWide] = useState(false);
   const [pillExpanding, setPillExpanding] = useState(false);
-  const [titleTruncated, setTitleTruncated] = useState(false);
   const pillExpandedAt = useRef(0);
   const pillExpandTimer = useRef<number | undefined>(undefined);
-  const titleRef = useRef<HTMLSpanElement | null>(null);
+  const [volOpen, setVolOpen] = useState(false);
+  const [volPos, setVolPos] = useState<{ left: number; top: number } | null>(null);
+  const volButtonRef = useRef<HTMLButtonElement | null>(null);
+  const volCloseTimer = useRef<number | undefined>(undefined);
+  const pillTitleWrapRef = useRef<HTMLSpanElement | null>(null);
+  const pillTitleRef = useRef<HTMLSpanElement | null>(null);
+  const titleTimeline = useRef<gsap.core.Timeline | null>(null);
   const [input, setInput] = useState('');
   const [playing, setPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
@@ -236,7 +240,6 @@ export function Hud({ config, videoHost }: HudProps) {
   const audioPlayPending = useRef(false);
   const lastAudioSeek = useRef(0);
   const mediaLogAt = useRef<Record<string, number>>({});
-  const testContextRef = useRef<AudioContext | null>(null);
   const logClient = useCallback(
     (level: 'info' | 'warn' | 'error', message: string, data?: unknown) => {
       api.log({ level, message, data });
@@ -248,10 +251,8 @@ export function Hud({ config, videoHost }: HudProps) {
     try {
       const next = await api.state();
       setState(next);
-      setOnline(true);
       return next;
     } catch {
-      setOnline(false);
       return undefined;
     }
   }, [api]);
@@ -685,6 +686,13 @@ export function Hud({ config, videoHost }: HudProps) {
     return () => observer.disconnect();
   }, [miniEditing]);
 
+  // 面板打开或胶囊收起时关掉音量浮层
+  useEffect(() => {
+    if (open || !pillWide) {
+      setVolOpen(false);
+    }
+  }, [open, pillWide]);
+
   // 弹幕：打开后拉取整段弹幕，播放时把到时间的弹幕交给宿主打印到输出面板
   useEffect(() => {
     setDanmakuList(null);
@@ -791,21 +799,6 @@ export function Hud({ config, videoHost }: HudProps) {
     setAudioReady(false);
   }, [audioSrc]);
 
-  // 标题被截断时才挂原生 title，避免没截断也弹 tooltip。
-  useEffect(() => {
-    const element = titleRef.current;
-    if (!element) {
-      return;
-    }
-    const check = () => {
-      setTitleTruncated(element.scrollWidth > element.clientWidth + 1);
-    };
-    check();
-    const observer = new ResizeObserver(check);
-    observer.observe(element);
-    return () => observer.disconnect();
-  }, [info?.title, pillWide, pillExpanding, open]);
-
   // 从 DASH 切回原生 mp4 时，确保旧的独立音轨被彻底停掉。
   useEffect(() => {
     if (audioSrc) {
@@ -910,8 +903,8 @@ export function Hud({ config, videoHost }: HudProps) {
   useEffect(() => {
     return () => {
       window.clearTimeout(pillExpandTimer.current);
-      void testContextRef.current?.close().catch(() => undefined);
-      testContextRef.current = null;
+      window.clearTimeout(volCloseTimer.current);
+      titleTimeline.current?.kill();
     };
   }, []);
 
@@ -1168,7 +1161,7 @@ export function Hud({ config, videoHost }: HudProps) {
       saveTimer.current = window.setTimeout(() => {
         const payload = pendingSave.current;
         pendingSave.current = {};
-        void api.patch({ settings: payload }).catch(() => setOnline(false));
+        void api.patch({ settings: payload }).catch(() => undefined);
       }, 350);
     },
     [api],
@@ -1388,7 +1381,7 @@ export function Hud({ config, videoHost }: HudProps) {
       try {
         await api.patch({ video: { bvid: ref.bvid, aid: ref.aid, page: ref.page }, visible: true });
       } catch {
-        setOnline(false);
+        // 服务端不可用时静默重试
       }
     }
   };
@@ -1420,7 +1413,7 @@ export function Hud({ config, videoHost }: HudProps) {
       try {
         await api.patch({ video: { bvid: episode.bvid, page: episode.page }, visible: true });
       } catch {
-        setOnline(false);
+        // 服务端不可用时静默重试
       }
     }
   };
@@ -1488,101 +1481,55 @@ export function Hud({ config, videoHost }: HudProps) {
     }
   };
 
-  const playTestTone = () => {
-    // 1) Web Audio：不经过 CSP/网络，直接验证 workbench 有没有音频输出。
-    try {
-      const Ctor =
-        window.AudioContext ??
-        (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
-      if (!Ctor) {
-        throw new Error('AudioContext 不可用');
-      }
-      const context = testContextRef.current ?? new Ctor();
-      testContextRef.current = context;
-      const oscillator = context.createOscillator();
-      const gain = context.createGain();
-      oscillator.type = 'sine';
-      oscillator.frequency.value = 440;
-      gain.gain.value = Math.max(0.05, Math.min(0.5, volumeRef.current));
-      oscillator.connect(gain);
-      gain.connect(context.destination);
-      const startAt = context.currentTime + 0.02;
-      oscillator.start(startAt);
-      oscillator.stop(startAt + 1);
-      oscillator.onended = () => {
-        oscillator.disconnect();
-        gain.disconnect();
-      };
-      void context
-        .resume()
-        .then(() => {
-          logClient('info', 'test tone (web audio)', {
-            state: context.state,
-            sampleRate: context.sampleRate,
-            volume: volumeRef.current,
-          });
-          setNotice(`测试音已播放（Web Audio：${context.state}）`);
-        })
-        .catch((error: unknown) => {
-          logClient('error', 'test tone web audio failed', {
-            message: toMessage(error),
-            state: context.state,
-          });
-          setError(`测试音失败：${toMessage(error)}`);
-        });
-    } catch (error) {
-      logClient('error', 'test tone setup failed', { message: toMessage(error) });
-      setError(`测试音失败：${toMessage(error)}`);
+  // 音量滑杆：悬停音量按钮时在按钮正上方弹出（胶囊 overflow 会裁切，所以用 portal）
+  const openVolumePopover = () => {
+    window.clearTimeout(volCloseTimer.current);
+    const rect = volButtonRef.current?.getBoundingClientRect();
+    if (rect) {
+      setVolPos({ left: Math.round(rect.left + rect.width / 2), top: Math.round(rect.top - 6) });
     }
+    setVolOpen(true);
+  };
 
-    // 2) 探测 workbench 对常见音频编码的支持（音量极低，不干扰）。
-    const canPlay = document.createElement('audio');
-    const support = [
-      'audio/mpeg',
-      'audio/wav',
-      'audio/mp4; codecs="mp4a.40.2"',
-      'audio/webm; codecs="opus"',
-    ].map((type) => [type, canPlay.canPlayType(type)]);
-    let mediaSource: boolean | null = null;
-    try {
-      mediaSource =
-        typeof MediaSource !== 'undefined'
-          ? MediaSource.isTypeSupported('audio/mp4; codecs="mp4a.40.2"')
-          : null;
-    } catch {
-      mediaSource = null;
+  const closeVolumePopover = () => {
+    window.clearTimeout(volCloseTimer.current);
+    volCloseTimer.current = window.setTimeout(() => setVolOpen(false), 220);
+  };
+
+  // 标题 hover 溢出时来回滚动（没有溢出就不动）
+  const startTitleScroll = () => {
+    const wrap = pillTitleWrapRef.current;
+    const inner = pillTitleRef.current;
+    if (!wrap || !inner) {
+      return;
     }
-    logClient('info', 'media codec support', { support, mediaSource });
+    const overflow = inner.scrollWidth - wrap.clientWidth;
+    if (overflow <= 2) {
+      return;
+    }
+    titleTimeline.current?.kill();
+    const timeline = gsap.timeline({ repeat: -1, delay: 0.12 });
+    timeline
+      .to(inner, { x: -overflow, duration: Math.max(1.4, overflow / 30), ease: 'none' })
+      .to({}, { duration: 1.1 })
+      .to(inner, { x: 0, duration: Math.max(0.5, overflow / 90), ease: 'none' })
+      .to({}, { duration: 0.45 });
+    titleTimeline.current = timeline;
+  };
 
-    for (const extension of ['mp3', 'wav'] as const) {
-      const probe = new Audio(api.testToneUrl(extension));
-      probe.volume = 0.001;
-      probe
-        .play()
-        .then(() => {
-          logClient('info', `test tone (${extension} over http)`, {
-            readyState: probe.readyState,
-            duration: probe.duration,
-            audioBytes: (probe as HTMLAudioElement & { webkitAudioDecodedByteCount?: number })
-              .webkitAudioDecodedByteCount,
-          });
-          probe.pause();
-        })
-        .catch((error: unknown) => {
-          logClient('error', `test tone ${extension} failed`, {
-            name: error instanceof DOMException ? error.name : undefined,
-            message: toMessage(error),
-          });
-        });
+  const stopTitleScroll = () => {
+    titleTimeline.current?.kill();
+    titleTimeline.current = null;
+    if (pillTitleRef.current) {
+      gsap.to(pillTitleRef.current, { x: 0, duration: 0.2, ease: 'power2.out', overwrite: true });
     }
   };
 
-  const hideSkin = async () => {
-    try {
-      await api.patch({ visible: false });
-      setState((previous) => (previous ? { ...previous, visible: false } : previous));
-    } catch {
-      setOnline(false);
+  const toggleDanmaku = () => {
+    const next = !settings.danmaku;
+    updateSettings({ danmaku: next });
+    if (next) {
+      toast.info('弹幕会按播放时间打印到「Bilibili 皮肤」输出面板');
     }
   };
 
@@ -2111,15 +2058,6 @@ export function Hud({ config, videoHost }: HudProps) {
                 >
                   <Minus width={15} height={15} />
                 </button>
-                <button
-                  type="button"
-                  className="bili-icon-btn"
-                  title="隐藏皮肤（Cmd/Ctrl+Alt+B 恢复）"
-                  aria-label="隐藏皮肤"
-                  onClick={() => void hideSkin()}
-                >
-                  <X width={15} height={15} />
-                </button>
               </div>
 
             <div className="bp-space-y-2.5 bp-px-3 bp-py-3">
@@ -2202,13 +2140,7 @@ export function Hud({ config, videoHost }: HudProps) {
                     title={settings.danmaku ? '关闭弹幕输出' : '把弹幕按时间打印到输出面板'}
                     aria-label="弹幕"
                     aria-pressed={settings.danmaku}
-                    onClick={() => {
-                      const next = !settings.danmaku;
-                      updateSettings({ danmaku: next });
-                      if (next) {
-                        toast.info('弹幕会按播放时间打印到「Bilibili 皮肤」输出面板');
-                      }
-                    }}
+                    onClick={toggleDanmaku}
                   >
                     <MessageDots width={13} height={13} />
                   </button>
@@ -2494,14 +2426,6 @@ export function Hud({ config, videoHost }: HudProps) {
               )}
 
               <div className="bp-flex bp-items-center bp-gap-2 bili-divider-t bp-pt-2">
-                <span className={`bili-dot ${online ? 'bili-dot-online' : 'bili-dot-offline'}`} />
-                <span className="bp-text-[11px] bili-subtle">
-                  {online ? '本地服务已连接' : '本地服务断开'}
-                </span>
-                <Button variant="link" size="sm" className="bili-link-btn" onClick={playTestTone}>
-                  测试声音
-                </Button>
-
                 <div className="bp-ml-auto bp-flex bp-items-center bp-gap-2">
                   {!state ? (
                     <>
@@ -2571,32 +2495,50 @@ export function Hud({ config, videoHost }: HudProps) {
                 )}
               </button>
               <button
+                ref={volButtonRef}
                 type="button"
                 className={`bili-icon-btn ${muted ? 'bili-muted' : ''}`}
                 title={muted ? '取消静音' : '静音'}
                 aria-label={muted ? '取消静音' : '静音'}
+                onMouseEnter={openVolumePopover}
+                onMouseLeave={closeVolumePopover}
                 onClick={toggleMute}
               >
                 <Volume width={14} height={14} />
               </button>
-              <input
-                className="bili-range bili-pill-volume"
-                type="range"
-                min={0}
-                max={1}
-                step={0.05}
-                value={muted ? 0 : volume}
-                style={rangeFill(muted ? 0 : volume, 0, 1)}
-                aria-label="音量"
-                onChange={(event) => changeVolume(Number(event.target.value))}
-              />
               <span
-                ref={titleRef}
-                title={titleTruncated ? (info?.title ?? 'B站视频皮肤') : undefined}
-                className="bp-min-w-0 bp-flex-1 bp-truncate bp-text-[12px] bili-text"
+                ref={pillTitleWrapRef}
+                className="bili-pill-title bp-min-w-0 bp-flex-1 bp-text-[12px] bili-text"
+                onMouseEnter={startTitleScroll}
+                onMouseLeave={stopTitleScroll}
               >
-                {info?.title ?? 'B站视频皮肤'}
+                <span ref={pillTitleRef} className="bili-pill-title-inner">
+                  {info?.title ?? 'B站视频皮肤'}
+                </span>
               </span>
+              {volOpen && volPos ? (
+                createPortal(
+                  <div
+                    className="bili-vol-pop"
+                    style={{ left: volPos.left, top: volPos.top }}
+                    onMouseEnter={openVolumePopover}
+                    onMouseLeave={closeVolumePopover}
+                  >
+                    <input
+                      className="bili-range bili-range-vertical bili-pill-volume"
+                      type="range"
+                      min={0}
+                      max={1}
+                      step={0.05}
+                      value={muted ? 0 : volume}
+                      style={rangeFill(muted ? 0 : volume, 0, 1)}
+                      aria-label="音量"
+                      onChange={(event) => changeVolume(Number(event.target.value))}
+                    />
+                  </div>,
+                  document.getElementById('bili-skin-hud') ?? document.body,
+                )
+              ) : null}
               <button
                 type="button"
                 className="bili-icon-btn"
@@ -2609,17 +2551,18 @@ export function Hud({ config, videoHost }: HudProps) {
               <button
                 type="button"
                 className="bili-icon-btn"
-                title="隐藏皮肤"
-                aria-label="隐藏皮肤"
+                title={settings.danmaku ? '关闭弹幕输出' : '把弹幕按时间打印到输出面板'}
+                aria-label="弹幕"
+                aria-pressed={settings.danmaku}
                 onClick={() => {
-                  // 从迷你展开后，鼠标位置正好落在右侧的 X 上，避免误触
+                  // 从迷你展开后鼠标正好落在右侧按钮上，避免误触
                   if (Date.now() - pillExpandedAt.current < 400) {
                     return;
                   }
-                  void hideSkin();
+                  toggleDanmaku();
                 }}
               >
-                <X width={14} height={14} />
+                <MessageDots width={14} height={14} />
               </button>
               <button
                 type="button"

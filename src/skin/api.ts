@@ -106,12 +106,6 @@ export class SkinApi {
     }
   }
 
-  testToneUrl(extension: 'wav' | 'mp3' = 'wav'): string {
-    return `http://127.0.0.1:${this.preferredPort}/api/test-tone.${extension}?token=${encodeURIComponent(
-      this.config.token,
-    )}`;
-  }
-
   loginQr(): Promise<LoginQr> {
     return this.request<LoginQr>('/api/login/qr');
   }

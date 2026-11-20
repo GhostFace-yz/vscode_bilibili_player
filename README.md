@@ -84,10 +84,9 @@ pnpm run vsix
 
 0.4.8 起见下面的顺序排查，不用再靠猜：
 
-1. HUD 底部点 **「测试声音」**。它用 Web Audio `AudioContext` 直接生成 440Hz 蜂鸣，不经过 CSP、不经过网络：
-   - 能听到：workbench 的音频输出正常，问题在具体媒体资源
-   - 听不到：VS Code 主窗口本身没有音频输出（系统音量、输出设备、或窗口被静音），任何 `<video>` 组件都救不了
-2. 点「显示日志」打开输出通道，或直接看渲染进程日志：
+1. 点「显示日志」看「Bilibili 皮肤」输出面板：启动时会打印当前使用的音频转码器（`ffmpeg` 或 `afconvert`），没有转码器就说明 AAC 音轨无法播放。
+   - 有转码器仍没声音：看 `[客户端]` 的音频错误行；确认系统音量、输出设备、或窗口没有被静音
+2. 想看更细的媒体事件，直接看渲染进程日志：
    - macOS：`~/Library/Application Support/Code/User/globalStorage/ghostface-yz.vscode-bilibili-player/client.log`
    - Windows：`%APPDATA%\Code\User\globalStorage\ghostface-yz.vscode-bilibili-player\client.log`
    - Linux：`~/.config/Code/User/globalStorage/ghostface-yz.vscode-bilibili-player/client.log`
