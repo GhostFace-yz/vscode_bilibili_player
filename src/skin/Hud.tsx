@@ -67,6 +67,22 @@ const QUALITY_CHOICES = [16, 32, 64, 74, 80, 112, 116, 120];
 /** 小屏视频框的最小宽度（px） */
 const MINI_MIN_WIDTH = 120;
 
+/**
+ * 面板开合状态记在渲染进程里：默认收起成胶囊，不挡代码；
+ * 只有用户自己展开过，下次窗口才保持展开。
+ */
+const PANEL_PREF_KEY = 'bili.skin.panel';
+type PanelPref = 'open' | 'pill' | null;
+
+function readPanelPref(): PanelPref {
+  try {
+    const value = window.localStorage.getItem(PANEL_PREF_KEY);
+    return value === 'open' || value === 'pill' ? value : null;
+  } catch {
+    return null;
+  }
+}
+
 type MiniBoxRect = { x: number; y: number; w: number; h: number };
 
 const LIVE_QUALITY_NAMES: Record<number, string> = {
@@ -169,7 +185,8 @@ export function Hud({ config, videoHost }: HudProps) {
   const [audioBlocked, setAudioBlocked] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [open, setOpen] = useState(true);
+  const [panelPref] = useState<PanelPref>(readPanelPref);
+  const [open, setOpen] = useState(panelPref === 'open');
   const [hudHovered, setHudHovered] = useState(false);
   const [pillWide, setPillWide] = useState(false);
   const [pillExpanding, setPillExpanding] = useState(false);
@@ -280,15 +297,26 @@ export function Hud({ config, videoHost }: HudProps) {
   useEffect(() => {
     let disposed = false;
     let timer: number | undefined;
+    let failures = 0;
 
     const tick = async () => {
       if (disposed) {
         return;
       }
-      await refreshState();
-      if (!disposed) {
-        timer = window.setTimeout(tick, 2000);
+      const next = await refreshState();
+      if (disposed) {
+        return;
       }
+      if (next) {
+        failures = 0;
+      } else {
+        failures += 1;
+        // 挂载前已经探测过服务；这里连续拿不到状态（令牌失效/服务挂了）就别无限重试。
+        if (!stateRef.current && failures >= 15) {
+          return;
+        }
+      }
+      timer = window.setTimeout(tick, 2000);
     };
 
     void tick();
@@ -310,6 +338,19 @@ export function Hud({ config, videoHost }: HudProps) {
     const video = state.video;
     setInput(video ? (video.bvid ?? `av${video.aid ?? ''}`) : '');
   }, [state]);
+
+  const connected = state !== null;
+
+  useEffect(() => {
+    if (!connected) {
+      return;
+    }
+    try {
+      window.localStorage.setItem(PANEL_PREF_KEY, open ? 'open' : 'pill');
+    } catch {
+      // 隐私模式写不了 localStorage 时只是不记忆开合状态
+    }
+  }, [open, connected]);
 
   const load = useCallback(
     async (ref: VideoRef, qn: number): Promise<PlayInfo | null> => {
@@ -421,7 +462,8 @@ export function Hud({ config, videoHost }: HudProps) {
     void load(ref, settingsRef.current.quality);
   }, [videoKey, state, load]);
 
-  const visible = state ? state.visible : true;
+  // 还没连上本地服务时什么都不显示：卸载/禁用扩展后残留的注入不会弹出空设置面板。
+  const visible = state?.visible ?? false;
   visibleRef.current = visible;
 
   useEffect(() => {
@@ -2214,6 +2256,10 @@ export function Hud({ config, videoHost }: HudProps) {
       <div className="bili-dim" />
     </div>
   );
+
+  if (!state) {
+    return null;
+  }
 
   return (
     <>

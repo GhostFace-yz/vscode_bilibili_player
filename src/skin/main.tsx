@@ -1,6 +1,11 @@
 import { createRoot } from 'react-dom/client';
 import sonnerStyles from 'sonner/dist/styles.css';
+import type { SkinConfig } from '../shared/types';
+import { SkinApi } from './api';
 import { Hud } from './Hud';
+
+/** 等工作台里的本地服务起来的最长时间（扩展宿主是 onStartupFinished，可能比页面晚几秒）。 */
+const CONNECT_TIMEOUT_MS = 15_000;
 
 /**
  * VS Code 把主题变量（--vscode-*）定义在 .monaco-workbench 上，而不是 body。
@@ -20,7 +25,41 @@ function ensureSonnerStyles(): void {
   document.head.append(style);
 }
 
-function boot(): void {
+const sleep = (ms: number) => new Promise<void>((resolve) => window.setTimeout(resolve, ms));
+
+/**
+ * 探测扩展宿主的本地 API。
+ * 卸载/禁用扩展后 workbench.html 里的注入不会自动消失，如果直接挂载 HUD，
+ * 就会出现一个连不上服务、只会显示“本地服务未启动”的空设置面板。
+ */
+async function waitForApi(config: SkinConfig): Promise<boolean> {
+  const api = new SkinApi(config);
+  const deadline = Date.now() + CONNECT_TIMEOUT_MS;
+  let attempt = 0;
+  while (Date.now() < deadline) {
+    if (await api.probe()) {
+      return true;
+    }
+    attempt += 1;
+    await sleep(attempt <= 6 ? 250 : 1000);
+  }
+  return false;
+}
+
+/** 探测失败：把可能残留的样式/节点清干净，让编辑区恢复成普通 VS Code。 */
+function teardown(): void {
+  try {
+    document.body.classList.remove('bili-skin-on');
+    document.getElementById('bili-skin-video-host')?.remove();
+    document.getElementById('bili-skin-hud')?.remove();
+    document.querySelectorAll('link[href*="bilibili-skin.css"]').forEach((node) => node.remove());
+    document.documentElement.dataset.biliSkin = 'offline';
+  } catch {
+    // 清理失败不影响编辑器
+  }
+}
+
+async function boot(): Promise<void> {
   const config = window.__BILI_SKIN_CONFIG__;
   if (!config) {
     console.warn('[bilibili-skin] missing window.__BILI_SKIN_CONFIG__');
@@ -30,6 +69,12 @@ function boot(): void {
     return;
   }
   window.__BILI_SKIN_MOUNTED__ = true;
+
+  if (!(await waitForApi(config))) {
+    teardown();
+    return;
+  }
+
   ensureSonnerStyles();
 
   const videoHost = document.createElement('div');
@@ -57,7 +102,7 @@ function boot(): void {
 }
 
 if (document.readyState === 'loading') {
-  document.addEventListener('DOMContentLoaded', boot, { once: true });
+  document.addEventListener('DOMContentLoaded', () => void boot(), { once: true });
 } else {
-  boot();
+  void boot();
 }

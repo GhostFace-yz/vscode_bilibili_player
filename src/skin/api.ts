@@ -60,6 +60,21 @@ export class SkinApi {
     }
   }
 
+  /**
+   * 只探测本地服务在不在（/api/health，无副作用）。
+   * HUD 挂载前用：卸载/禁用扩展后 workbench 里的注入还在，探测失败就不渲染。
+   */
+  async probe(): Promise<boolean> {
+    const ports = [this.preferredPort, ...PORT_RANGE.filter((port) => port !== this.preferredPort)];
+    for (const port of ports) {
+      if (await this.isCompatible(port)) {
+        this.preferredPort = port;
+        return true;
+      }
+    }
+    return false;
+  }
+
   state(): Promise<SkinState> {
     return this.request<SkinState>('/api/state');
   }

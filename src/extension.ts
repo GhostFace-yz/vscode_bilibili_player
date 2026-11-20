@@ -21,6 +21,8 @@ import { applyPatch, isPatched, restorePatch, writeSkinConfig } from './workbenc
 
 const TOKEN_KEY = 'bilibiliPlayer.apiToken';
 const SKIN_VERSION_KEY = 'bilibiliPlayer.skinVersion';
+/** 用户是否开过皮肤：VS Code 升级会覆盖 workbench.html，靠它决定要不要自动补回注入。 */
+const ENABLED_KEY = 'bilibiliPlayer.enabledIntent';
 
 interface Services {
   auth: BiliAuth;
@@ -47,7 +49,7 @@ export function activate(context: vscode.ExtensionContext): void {
 
   context.subscriptions.push(
     vscode.commands.registerCommand('bilibiliPlayer.enable', () => runEnable(context)),
-    vscode.commands.registerCommand('bilibiliPlayer.disable', () => runDisable()),
+    vscode.commands.registerCommand('bilibiliPlayer.disable', () => runDisable(context)),
     vscode.commands.registerCommand('bilibiliPlayer.showOutput', () => output.show(true)),
   );
 
@@ -213,31 +215,77 @@ async function initServices(context: vscode.ExtensionContext): Promise<Services>
   );
 
   const started: Services = { auth, state, server, token, liveDanmaku };
+  const install = locateWorkbench(vscode.env.appRoot, vscode.version);
+  const patched = Boolean(install && isPatched(install));
+  if (patched) {
+    // workbench 里还有注入就说明上次是开着的：新窗口直接显示，不用再手动执行“开启”。
+    await started.state.patch({ visible: true });
+    await context.globalState.update(ENABLED_KEY, true);
+  }
   await syncSkinConfig(context, started);
-  await ensureVisibleAfterUpdate(context, started, version);
+  if (install && !patched) {
+    await reapplyAfterUpdate(context, started, version);
+  }
   updateStatusBar(started);
 
   return started;
 }
 
-async function ensureVisibleAfterUpdate(
+/**
+ * VS Code 升级会重新覆盖 workbench.html，注入和 CSP 一起丢失。
+ * 只要用户之前开过皮肤，就自动补回注入，省得每次升级后还要手动“开启”。
+ */
+async function reapplyAfterUpdate(
   context: vscode.ExtensionContext,
   started: Services,
   version: string,
 ): Promise<void> {
+  if (!context.globalState.get<boolean>(ENABLED_KEY, false)) {
+    return;
+  }
+
   const install = locateWorkbench(vscode.env.appRoot, vscode.version);
-  if (!install || !isPatched(install)) {
+  if (!install || isPatched(install)) {
     return;
   }
 
-  const lastVersion = context.globalState.get<string>(SKIN_VERSION_KEY);
-  if (lastVersion === version) {
-    return;
-  }
+  try {
+    // 多个窗口同时启动时只让一个窗口写工作台，避免校验和互相踩。
+    const lockPath = path.join(context.globalStorageUri.fsPath, 'workbench-apply.lock');
+    if (isFresh(lockPath, 60_000)) {
+      log('另一个窗口正在恢复皮肤注入，跳过。', '皮肤');
+      return;
+    }
+    fs.mkdirSync(path.dirname(lockPath), { recursive: true });
+    fs.writeFileSync(lockPath, String(Date.now()));
 
-  await started.state.patch({ visible: true });
-  await context.globalState.update(SKIN_VERSION_KEY, version);
-  log(`皮肤版本 ${lastVersion ?? '未知'} → ${version}，已重新显示。`, '皮肤');
+    applyPatch(install, readSkinAssets(context, skinConfigFor(context, started)), {
+      backupRoot: path.join(context.globalStorageUri.fsPath, 'workbench-backups'),
+      cacheKey: String(Date.now()),
+      log,
+    });
+    await started.state.patch({ visible: true });
+    await context.globalState.update(SKIN_VERSION_KEY, version);
+    log('workbench.html 被更新覆盖，已自动重新注入皮肤（重载窗口后生效）。', '皮肤');
+    void vscode.window
+      .showInformationMessage('已自动恢复 B 站皮肤（VS Code 升级会覆盖工作台文件），重载窗口后生效。', '重载窗口')
+      .then((choice) => {
+        if (choice) {
+          void vscode.commands.executeCommand('workbench.action.reloadWindow');
+        }
+      });
+  } catch (error) {
+    // 权限不足等情况下静默失败，避免每次启动都弹错；用户仍可手动“开启”。
+    log(`自动恢复皮肤失败：${toMessage(error)}`, '错误');
+  }
+}
+
+function isFresh(file: string, maxAgeMs: number): boolean {
+  try {
+    return Date.now() - fs.statSync(file).mtimeMs < maxAgeMs;
+  } catch {
+    return false;
+  }
 }
 
 /**
@@ -361,6 +409,7 @@ async function runEnable(context: vscode.ExtensionContext): Promise<void> {
 
     const started = await requireServices();
     await started.state.patch({ visible: true });
+    await context.globalState.update(ENABLED_KEY, true);
     void vscode.window.showInformationMessage('B站皮肤已开启：右下角 HUD 可播放视频（若没出现请重载窗口）。');
   } catch (error) {
     reportError(error);
@@ -368,8 +417,8 @@ async function runEnable(context: vscode.ExtensionContext): Promise<void> {
 }
 
 /** 关闭（还原）：移除注入、恢复 CSP 与校验和。 */
-async function runDisable(): Promise<void> {
-  await runRestore();
+async function runDisable(context: vscode.ExtensionContext): Promise<void> {
+  await runRestore(context);
 }
 
 async function runApply(context: vscode.ExtensionContext): Promise<void> {
@@ -400,6 +449,7 @@ async function runApply(context: vscode.ExtensionContext): Promise<void> {
     const backupRoot = path.join(context.globalStorageUri.fsPath, 'workbench-backups');
     await started.state.patch({ visible: true });
     applyPatch(install, assets, { backupRoot, cacheKey: String(Date.now()), log });
+    await context.globalState.update(ENABLED_KEY, true);
     await context.globalState.update(SKIN_VERSION_KEY, String(context.extension.packageJSON.version ?? '0.0.0'));
     log(`皮肤已应用到 ${install.htmlPath}`, '皮肤');
 
@@ -444,14 +494,16 @@ async function runApply(context: vscode.ExtensionContext): Promise<void> {
   }
 }
 
-async function runRestore(): Promise<void> {
+async function runRestore(context: vscode.ExtensionContext): Promise<void> {
   try {
     const install = locateWorkbench(vscode.env.appRoot, vscode.version);
     if (!install) {
       throw new Error('未找到 VS Code 的 workbench.html');
     }
     if (!isPatched(install)) {
-      void vscode.window.showInformationMessage('当前没有应用皮肤，无需还原。');
+      // 工作台已被升级覆盖：也把“自动恢复”关掉，否则下次启动又会自动注入。
+      await context.globalState.update(ENABLED_KEY, false);
+      void vscode.window.showInformationMessage('当前没有应用皮肤，已关闭随 VS Code 升级自动恢复。');
       return;
     }
 
@@ -466,6 +518,8 @@ async function runRestore(): Promise<void> {
     }
 
     restorePatch(install, { log });
+    await context.globalState.update(ENABLED_KEY, false);
+    await context.globalState.update(SKIN_VERSION_KEY, undefined);
     log('已还原工作台。', '皮肤');
 
     if (answer === '还原并重载') {
