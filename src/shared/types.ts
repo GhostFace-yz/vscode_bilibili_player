@@ -145,11 +145,11 @@ export interface SkinConfig {
 }
 
 export const DEFAULT_SKIN_SETTINGS: SkinSettings = {
-  opacity: 0.5,
-  blur: 2,
-  dim: 0.25,
+  opacity: 0.32,
+  blur: 0,
+  dim: 0,
   fit: 'full',
-  muted: true,
+  muted: false,
   autoplay: false,
   quality: 80,
   hiddenMode: false,

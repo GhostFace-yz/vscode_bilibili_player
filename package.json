@@ -70,7 +70,7 @@
         },
         "bilibiliPlayer.opacity": {
           "type": "number",
-          "default": 0.5,
+          "default": 0.32,
           "minimum": 0.05,
           "maximum": 1,
           "description": "视频层不透明度。",
@@ -78,7 +78,7 @@
         },
         "bilibiliPlayer.blur": {
           "type": "number",
-          "default": 2,
+          "default": 0,
           "minimum": 0,
           "maximum": 40,
           "description": "视频层模糊半径（px）。",
@@ -86,7 +86,7 @@
         },
         "bilibiliPlayer.dim": {
           "type": "number",
-          "default": 0.25,
+          "default": 0,
           "minimum": 0,
           "maximum": 1,
           "description": "视频上方的暗化层强度。暗化色使用当前 VS Code 主题的编辑器背景色；100% 时画面完全回到原编辑区颜色。",
@@ -160,7 +160,7 @@
         },
         "bilibiliPlayer.muted": {
           "type": "boolean",
-          "default": true,
+          "default": false,
           "description": "静音播放。",
           "order": 6
         },

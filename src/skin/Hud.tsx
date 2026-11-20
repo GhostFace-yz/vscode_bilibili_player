@@ -222,7 +222,7 @@ export function Hud({ config, videoHost }: HudProps) {
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
   const [muted, setMuted] = useState(DEFAULT_SKIN_SETTINGS.muted);
-  const [volume, setVolume] = useState(0.8);
+  const [volume, setVolume] = useState(1);
   const [loginOpen, setLoginOpen] = useState(false);
   const [qr, setQr] = useState<LoginQr | null>(null);
   const [loginMessage, setLoginMessage] = useState('');

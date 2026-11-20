@@ -18,11 +18,11 @@ export function getSettings(): BilibiliPlayerSettings {
 
   return {
     defaultVideo: config.get<string>('defaultVideo', '').trim(),
-    opacity: clamp(config.get<number>('opacity', 0.5), 0.05, 1),
-    blur: clamp(config.get<number>('blur', 2), 0, 40),
-    dim: clamp(config.get<number>('dim', 0.25), 0, 1),
+    opacity: clamp(config.get<number>('opacity', 0.32), 0.05, 1),
+    blur: clamp(config.get<number>('blur', 0), 0, 40),
+    dim: clamp(config.get<number>('dim', 0), 0, 1),
     fit: normalizeFit(config.get<string>('fit', 'full')),
-    muted: config.get<boolean>('muted', true),
+    muted: config.get<boolean>('muted', false),
     autoplay: config.get<boolean>('autoplay', false),
     quality: normalizeQuality(config.get<number>('quality', 80)),
     hiddenMode: config.get<boolean>('hiddenMode', false),
