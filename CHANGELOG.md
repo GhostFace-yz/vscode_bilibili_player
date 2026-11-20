@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.6.6
+
+- 修复迷你胶囊按钮没有居中：`.bili-pill` 补上 `justify-content: center`（之前内容只有 28px 宽却贴在左边，左右留白是 1px / 11px，现在四边都是 6px）
+
 ## 0.6.5
 
 - 所有进度条统一成 shadcn/Radix `Slider`：设置面板的播放进度、音量、透明度/模糊/暗化（胶囊音量本来就是 Slider），移除原生 `input[type=range]` 和 `rangeFill`
