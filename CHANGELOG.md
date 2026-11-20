@@ -11,6 +11,7 @@
 - 缓冲 spinner 改为跟随主题色（中心圈用 focusBorder accent），隐藏播放模式下不再显示
 - 收起时如果正在 loading/buffering，播放键保持 spinner，不会再闪一下正常图标才变 loading
 - 启动时不再因为端口/令牌变化重写 workbench.html，避免每次启动都触发“Code 安装似乎损坏”的校验和误报（只有扩展版本变化或注入文件丢失才重新注入）
+- 小屏位置预览不再用 B 站封面（经常 404），改成主题色的 LiveTvFilled 电视图标占位
 
 ## 0.7.8
 

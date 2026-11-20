@@ -27,7 +27,7 @@ import {
   X,
 } from '@ricons/tabler';
 import { ChevronRight20Filled } from '@ricons/fluent';
-import { MoreHorizTwotone } from '@ricons/material';
+import { LiveTvFilled, MoreHorizTwotone } from '@ricons/material';
 import { Toaster, toast } from 'sonner';
 import { parseVideoInput } from '../bilibili/parse';
 import type {
@@ -2704,20 +2704,29 @@ export function Hud({ config, videoHost }: HudProps) {
                               className="bili-mini-forbidden bili-mini-forbidden-side"
                               style={{ width: minimapWidth }}
                             />
-                            {info?.cover ? (
-                              <img
-                                className="bili-mini-thumb"
-                                src={info.cover}
-                                alt=""
-                                referrerPolicy="no-referrer"
-                                style={{
-                                  left: miniActiveRect.x,
-                                  top: miniActiveRect.y,
-                                  width: miniActiveRect.w,
-                                  height: miniActiveRect.h,
-                                }}
+                            <div
+                              className="bili-mini-thumb bili-mini-thumb-icon"
+                              style={{
+                                left: miniActiveRect.x,
+                                top: miniActiveRect.y,
+                                width: miniActiveRect.w,
+                                height: miniActiveRect.h,
+                              }}
+                              aria-hidden="true"
+                            >
+                              <LiveTvFilled
+                                width={Math.min(
+                                  28 / (miniPreviewScale || 1),
+                                  miniActiveRect.w * 0.5,
+                                  miniActiveRect.h * 0.5,
+                                )}
+                                height={Math.min(
+                                  28 / (miniPreviewScale || 1),
+                                  miniActiveRect.w * 0.5,
+                                  miniActiveRect.h * 0.5,
+                                )}
                               />
-                            ) : null}
+                            </div>
                             <div
                               ref={miniBoxRef}
                               className="bili-mini-box"

@@ -1064,6 +1064,14 @@
   opacity: 0.85;
 }
 
+/* 小屏预览里的视频区域占位：B 站封面经常 404，直接用主题色的电视图标 */
+.bili-mini-thumb-icon {
+  display: grid;
+  place-items: center;
+  color: var(--bili-fg-subtle);
+  opacity: 0.9;
+}
+
 .bili-mini-box {
   position: absolute;
   box-sizing: border-box;
