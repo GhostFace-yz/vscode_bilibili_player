@@ -134,8 +134,14 @@ async function initServices(context: vscode.ExtensionContext): Promise<Services>
       // 音轨要在扩展宿主里转成 MP3/WAV：VS Code 的 libffmpeg 没有 AAC 解码器。
       const transcoded = (audioUrl: string) =>
         `http://127.0.0.1:${apiPort}/api/audio/transcoded?url=${encodeURIComponent(audioUrl)}&token=${encodeURIComponent(token)}`;
+      // 视频也走宿主代理：部分 CDN（尤其 1080P60 等高码率）会校验 Referer，
+      // 渲染进程的 <video> 带不了 Referer，直连会 403 → MEDIA_ERR_SRC_NOT_SUPPORTED。
+      const proxied = (videoUrl: string) =>
+        `http://127.0.0.1:${apiPort}/api/video?url=${encodeURIComponent(videoUrl)}&token=${encodeURIComponent(token)}`;
       return {
         ...info,
+        url: proxied(info.url),
+        backupUrls: info.backupUrls?.map(proxied) ?? [],
         audioUrl: info.audioUrl ? transcoded(info.audioUrl) : undefined,
         audioBackupUrls: info.audioBackupUrls?.map(transcoded),
       };

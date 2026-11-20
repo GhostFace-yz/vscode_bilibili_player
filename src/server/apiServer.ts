@@ -242,7 +242,12 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
   }
 
   if (path === '/api/audio' && req.method === 'GET') {
-    await proxyAudio(req, res, url);
+    await proxyMedia(req, res, url, 'audio');
+    return;
+  }
+
+  if (path === '/api/video' && req.method === 'GET') {
+    await proxyMedia(req, res, url, 'video');
     return;
   }
 
@@ -323,7 +328,7 @@ async function serveTranscodedAudio(
     sendJson(res, 400, { error: '缺少或非法 url' });
     return;
   }
-  if (target.protocol !== 'https:' || !isAllowedAudioHost(target.hostname)) {
+  if (target.protocol !== 'https:' || !isAllowedMediaHost(target.hostname)) {
     sendJson(res, 400, { error: '不支持的音轨地址' });
     return;
   }
@@ -459,7 +464,7 @@ async function serveFile(
   stream.pipe(res);
 }
 
-function isAllowedAudioHost(hostname: string): boolean {
+function isAllowedMediaHost(hostname: string): boolean {
   const host = hostname.toLowerCase();
   return (
     host.endsWith('.bilivideo.com') ||
@@ -475,7 +480,12 @@ function isAllowedAudioHost(hostname: string): boolean {
  * 直接让渲染进程请求 CDN 的 m4s 时，VS Code 里会出现 MEDIA_ERR_SRC_NOT_SUPPORTED；
  * 这里统一补 Referer/UA、把 octet-stream 改成 audio/mp4，并转发 Range。
  */
-async function proxyAudio(req: http.IncomingMessage, res: http.ServerResponse, url: URL): Promise<void> {
+async function proxyMedia(
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+  url: URL,
+  kind: 'audio' | 'video',
+): Promise<void> {
   const raw = url.searchParams.get('url');
   if (!raw) {
     sendJson(res, 400, { error: '缺少 url' });
@@ -489,11 +499,11 @@ async function proxyAudio(req: http.IncomingMessage, res: http.ServerResponse, u
     return;
   }
   if (target.protocol !== 'https:') {
-    sendJson(res, 400, { error: '只允许 https 音轨' });
+    sendJson(res, 400, { error: '只允许 https 媒体地址' });
     return;
   }
-  if (!isAllowedAudioHost(target.hostname)) {
-    sendJson(res, 400, { error: '不支持的音轨域名' });
+  if (!isAllowedMediaHost(target.hostname)) {
+    sendJson(res, 400, { error: '不支持的媒体域名' });
     return;
   }
 
@@ -510,11 +520,13 @@ async function proxyAudio(req: http.IncomingMessage, res: http.ServerResponse, u
   try {
     upstream = await fetch(target, { headers });
   } catch (error) {
-    sendJson(res, 502, { error: `音轨上游请求失败：${error instanceof Error ? error.message : String(error)}` });
+    sendJson(res, 502, {
+      error: `${kind === 'video' ? '视频' : '音轨'}上游请求失败：${error instanceof Error ? error.message : String(error)}`,
+    });
     return;
   }
   if (!upstream.ok) {
-    sendJson(res, upstream.status, { error: `音轨上游 HTTP ${upstream.status}` });
+    sendJson(res, upstream.status, { error: `${kind === 'video' ? '视频' : '音轨'}上游 HTTP ${upstream.status}` });
     return;
   }
 
@@ -522,7 +534,11 @@ async function proxyAudio(req: http.IncomingMessage, res: http.ServerResponse, u
   const contentType = upstream.headers.get('content-type') ?? '';
   res.setHeader(
     'Content-Type',
-    contentType.includes('octet-stream') || !contentType ? 'audio/mp4' : contentType,
+    contentType.includes('octet-stream') || !contentType
+      ? kind === 'video'
+        ? 'video/mp4'
+        : 'audio/mp4'
+      : contentType,
   );
   for (const name of ['content-length', 'content-range', 'accept-ranges', 'etag', 'last-modified']) {
     const value = upstream.headers.get(name);
@@ -547,7 +563,6 @@ function setCorsHeaders(res: http.ServerResponse): void {
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'content-type, x-bili-token');
   res.setHeader('Access-Control-Allow-Private-Network', 'true');
-  res.setHeader('Access-Control-Max-Age', '600');
 }
 
 function isAuthorized(req: http.IncomingMessage, url: URL, token: string): boolean {

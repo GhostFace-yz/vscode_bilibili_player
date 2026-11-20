@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.7.6
+
+- 修复部分视频 1080P60 / 高码率画质报 `MEDIA_ERR_SRC_NOT_SUPPORTED`：这些 CDN 节点校验 `Referer`，无 Referer 直接 403，而渲染进程的 `<video>` 带不了 Referer。现在视频和音轨一样走扩展宿主代理（`/api/video`，转发 Range 并补上 Referer / UA），720P/360P 本来就能播的也会继续正常
+- 代理支持 Range / 206，拖动进度条照常 seek；请求断开时会销毁上游连接，不会在后台继续下载
+- 清理了重复的 CORS 响应头
+
 ## 0.7.5
 
 - 命令面板分类从「B站皮肤」改成 `vscode-bilibili-player`，三条命令现在显示为 `vscode-bilibili-player: 开启 / 关闭（还原工作台） / 打开控制台`
