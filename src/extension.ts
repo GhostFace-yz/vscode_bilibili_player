@@ -162,17 +162,16 @@ async function initServices(context: vscode.ExtensionContext): Promise<Services>
 
       // playurl 给的第一个 CDN 偶尔是坏的（403/超时），交给 <video> 就是错误码 4：
       // 表现是“开启后没有画面，点重试才正常”。先探一下，把能用的排到最前面。
-      const [videoPick, audioPick] = await Promise.all([
-        preferReachableUrl(info.url, info.backupUrls ?? []),
-        info.audioUrl ? preferReachableUrl(info.audioUrl, info.audioBackupUrls ?? []) : Promise.resolve(null),
-      ]);
+      // 音轨不做探测：mcdn 的地址带连接数/令牌限制，多开一条探测连接反而容易
+      // 让后面的真实下载卡住；音轨本身有 WAV / 备用线路 / 720P 的回退链。
+      const videoPick = await preferReachableUrl(info.url, info.backupUrls ?? []);
 
       return {
         ...info,
         url: proxied(videoPick.url),
         backupUrls: videoPick.backups.map(proxied),
-        audioUrl: audioPick ? transcoded(audioPick.url) : undefined,
-        audioBackupUrls: audioPick ? audioPick.backups.map(transcoded) : undefined,
+        audioUrl: info.audioUrl ? transcoded(info.audioUrl) : undefined,
+        audioBackupUrls: info.audioBackupUrls?.map(transcoded),
       };
     },
     getDanmaku: async (cid) => {
