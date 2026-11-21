@@ -1034,7 +1034,7 @@ export function Hud({ api, videoHost }: HudProps) {
   }, [audioSrc]);
 
   // 音轨线路卡住（mcdn 节点经常收了请求不发数据，<audio> 连 error 都不给）：
-  // 12s 没拿到 metadata 就换备用线路；20s 还没好就先放开播放，别让按钮一直转圈。
+  // 15s 没拿到 metadata 就换备用线路；25s 还没好就先放开播放，别让按钮一直转圈。
   const handleAudioErrorRef = useRef(handleAudioError);
   handleAudioErrorRef.current = handleAudioError;
 
@@ -1043,7 +1043,7 @@ export function Hud({ api, videoHost }: HudProps) {
       setAudioStuck(false);
       return;
     }
-    const stuckTimer = window.setTimeout(() => setAudioStuck(true), 20_000);
+    const stuckTimer = window.setTimeout(() => setAudioStuck(true), 25_000);
     const switchTimer = window.setTimeout(() => {
       const audio = audioRef.current;
       if (!audio || audio.error || audio.readyState >= 1) {
@@ -1057,7 +1057,7 @@ export function Hud({ api, videoHost }: HudProps) {
       // 同一地址换成 WAV 也一样会卡，直接走备用线路
       audioWavTried.current = true;
       handleAudioErrorRef.current();
-    }, 12_000);
+    }, 15_000);
     return () => {
       window.clearTimeout(stuckTimer);
       window.clearTimeout(switchTimer);
