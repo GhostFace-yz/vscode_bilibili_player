@@ -30,9 +30,20 @@ interface Services {
   auth: BiliAuth;
   state: ExtensionState;
   server: ApiServerHandle;
+  /** 本窗口的 API 端口，用来判断「是不是我」 */
+  port: number;
   token: string;
   liveDanmaku: LiveDanmakuHub;
 }
+
+/** 全局只有一个窗口能开启：记录占用者的 API 端口和时间 */
+const OWNER_KEY = 'bilibiliPlayer.ownerWindow';
+interface WindowOwner {
+  port: number;
+  at: number;
+}
+/** 本次扩展激活的时间：端口会被复用，用来识别上一个会话留下的占用记录 */
+const bootedAt = Date.now();
 
 let output: vscode.OutputChannel;
 let statusBar: vscode.StatusBarItem;
@@ -127,6 +138,8 @@ async function initServices(context: vscode.ExtensionContext): Promise<Services>
     audioCacheMaxBytes,
     getState: () => state.snapshot(),
     patchState: (patch) => state.patch(patch),
+    // HUD 用这个特征串把端口绑回自己这个窗口（多窗口时 config 文件是共用的）
+    getWindowHint: () => windowHint(),
     getPlayInfo: async (ref, qn) => {
       const info = await getPlayInfo(auth.client(), ref, qn);
       log(
@@ -224,7 +237,7 @@ async function initServices(context: vscode.ExtensionContext): Promise<Services>
     '启动',
   );
 
-  const started: Services = { auth, state, server, token, liveDanmaku };
+  const started: Services = { auth, state, server, port: server.port, token, liveDanmaku };
   const install = locateWorkbench(vscode.env.appRoot, vscode.version);
   const patched = Boolean(install && isPatched(install));
   if (patched) {
@@ -234,6 +247,7 @@ async function initServices(context: vscode.ExtensionContext): Promise<Services>
     await started.state.patch({ visible: showOnce });
     if (showOnce) {
       await context.globalState.update(SHOW_ONCE_KEY, false);
+      await context.globalState.update(OWNER_KEY, { port: server.port, at: Date.now() } satisfies WindowOwner);
     }
     await context.globalState.update(ENABLED_KEY, true);
   }
@@ -425,11 +439,72 @@ async function runEnable(context: vscode.ExtensionContext): Promise<void> {
     }
 
     const started = await requireServices();
+
+    // 同一时间只允许一个窗口开着：已经在别的窗口开着就直接拒绝，
+    // 否则会出现两个窗口同时播放、关掉一个另一个还在的情况。
+    const owner = context.globalState.get<WindowOwner>(OWNER_KEY);
+    if (owner && owner.port !== started.port && (await isOwnerAlive(owner, started.port))) {
+      void vscode.window.showWarningMessage(
+        '另一个 VS Code 窗口已经开启了 bili-in-code，请先在那个窗口执行「关闭（还原工作台）」再开启。',
+      );
+      return;
+    }
+
+    await context.globalState.update(OWNER_KEY, { port: started.port, at: Date.now() } satisfies WindowOwner);
     await started.state.patch({ visible: true });
     await context.globalState.update(ENABLED_KEY, true);
     void vscode.window.showInformationMessage('B站皮肤已开启：右下角 HUD 可播放视频（若没出现请重载窗口）。');
   } catch (error) {
     reportError(error);
+  }
+}
+
+/**
+ * 当前窗口的特征串：工作区名 + 当前文件名。
+ * 渲染进程里对应的就是 document.title 里那几段，用来把 HUD 绑回本窗口的 API。
+ */
+function windowHint(): string {
+  const parts: string[] = [];
+  const workspaceName = vscode.workspace.name;
+  if (workspaceName) {
+    parts.push(workspaceName);
+  }
+  const file = vscode.window.activeTextEditor?.document.fileName;
+  if (file) {
+    parts.push(path.basename(file));
+    parts.push(path.basename(file, path.extname(file)));
+  }
+  return Array.from(new Set(parts.filter(Boolean))).join('|');
+}
+
+/**
+ * 占用记录还活着吗？
+ * - 端口会被复用，所以“自己端口 + 比本次启动更早”的记录一定是上个会话留下的
+ * - 其它端口就问一下 /api/health，窗口关了自然就探不到
+ */
+async function isOwnerAlive(owner: WindowOwner, myPort: number): Promise<boolean> {
+  if (!owner || !owner.port) {
+    return false;
+  }
+  if (owner.port === myPort) {
+    return owner.at >= bootedAt;
+  }
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 1500);
+  try {
+    const response = await fetch(`http://127.0.0.1:${owner.port}/api/health`, {
+      signal: controller.signal,
+    });
+    if (!response.ok) {
+      return false;
+    }
+    const health = (await response.json()) as { ok?: boolean; apiVersion?: number };
+    // 端口可能被别的程序复用，只有本扩展的服务才算“还开着”
+    return health.ok === true && (health.apiVersion ?? 0) >= 2;
+  } catch {
+    return false;
+  } finally {
+    clearTimeout(timer);
   }
 }
 
@@ -524,6 +599,8 @@ async function runRestore(context: vscode.ExtensionContext): Promise<void> {
       await context.globalState.update(ENABLED_KEY, false);
       await context.globalState.update(SHOW_ONCE_KEY, false);
       await context.globalState.update(SKIN_VERSION_KEY, undefined);
+      // 释放窗口占用，别的窗口才能再开
+      await context.globalState.update(OWNER_KEY, undefined);
       // 本窗口立刻收掉；其它窗口靠 enabled:false 自己收（它们的 exthost 是独立实例）
       const started = await services?.catch(() => undefined);
       await started?.state.patch({ visible: false });

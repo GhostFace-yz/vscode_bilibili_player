@@ -32,18 +32,21 @@ const sleep = (ms: number) => new Promise<void>((resolve) => window.setTimeout(r
  * 卸载/禁用扩展后 workbench.html 里的注入不会自动消失，如果直接挂载 HUD，
  * 就会出现一个连不上服务、只会显示“本地服务未启动”的空设置面板。
  */
-async function waitForApi(config: SkinConfig): Promise<boolean> {
+async function waitForApi(config: SkinConfig): Promise<SkinApi | null> {
   const api = new SkinApi(config);
   const deadline = Date.now() + CONNECT_TIMEOUT_MS;
   let attempt = 0;
   while (Date.now() < deadline) {
-    if (await api.probe()) {
-      return true;
+    const port = await api.probe();
+    if (port !== null) {
+      // 多窗口时端口可能连到别的窗口，把绑定结果记进日志方便排查
+      api.log({ level: 'info', message: 'hud bound', data: api.bindInfo });
+      return api;
     }
     attempt += 1;
     await sleep(attempt <= 6 ? 250 : 1000);
   }
-  return false;
+  return null;
 }
 
 /** 探测失败：把可能残留的样式/节点清干净，让编辑区恢复成普通 VS Code。 */
@@ -70,7 +73,8 @@ async function boot(): Promise<void> {
   }
   window.__BILI_SKIN_MOUNTED__ = true;
 
-  if (!(await waitForApi(config))) {
+  const api = await waitForApi(config);
+  if (!api) {
     teardown();
     return;
   }
@@ -98,7 +102,8 @@ async function boot(): Promise<void> {
     window.setTimeout(() => observer.disconnect(), 10_000);
   }
 
-  createRoot(hudHost).render(<Hud config={config} videoHost={videoHost} />);
+  // 用探测到的端口覆盖 config.port：HUD 必须连自己这个窗口的服务
+  createRoot(hudHost).render(<Hud config={{ ...config, port: api.port }} videoHost={videoHost} />);
 }
 
 if (document.readyState === 'loading') {

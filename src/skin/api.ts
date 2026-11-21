@@ -32,6 +32,8 @@ export interface HealthInfo {
   ok: boolean;
   version?: string;
   apiVersion?: number;
+  port?: number;
+  windowHint?: string;
   audioTranscoder?: string | null;
   ffmpeg?: boolean;
   platform?: string;
@@ -40,6 +42,7 @@ export interface HealthInfo {
 export class SkinApi {
   private preferredPort: number;
   private readonly verifiedPorts = new Set<number>();
+  private bindReport: { title: string; port: number; matched: boolean; candidates: unknown } | null = null;
 
   constructor(private config: SkinConfig) {
     this.preferredPort = config.port;
@@ -63,16 +66,67 @@ export class SkinApi {
   /**
    * 只探测本地服务在不在（/api/health，无副作用）。
    * HUD 挂载前用：卸载/禁用扩展后 workbench 里的注入还在，探测失败就不渲染。
+   *
+   * 多窗口时所有窗口共用同一份 bilibili-skin.config.js（谁最后激活就写谁的端口），
+   * 新开的窗口经常拿到别的窗口的端口，结果“在一个窗口开启、另一个窗口亮起来”。
+   * 这里用窗口标题把 HUD 绑回自己这个窗口的服务；标题对不上就退回原来的顺序。
    */
-  async probe(): Promise<boolean> {
+  async probe(): Promise<number | null> {
     const ports = [this.preferredPort, ...PORT_RANGE.filter((port) => port !== this.preferredPort)];
+    const healthy: { port: number; hint: string }[] = [];
     for (const port of ports) {
-      if (await this.isCompatible(port)) {
-        this.preferredPort = port;
-        return true;
+      const info = await this.healthAt(port);
+      if (info) {
+        healthy.push({ port, hint: info.windowHint ?? '' });
       }
     }
-    return false;
+    if (healthy.length === 0) {
+      return null;
+    }
+
+    const title = (document.title ?? '').trim();
+    let best: { port: number; hint: string; score: number } | undefined;
+    for (const item of healthy) {
+      const score = item.hint && title ? hintScore(item.hint, title) : 0;
+      if (score > 0 && (!best || score > best.score)) {
+        best = { ...item, score };
+      }
+    }
+    this.preferredPort = (best ?? healthy[0]).port;
+    this.bindReport = {
+      title,
+      port: this.preferredPort,
+      matched: Boolean(best),
+      candidates: healthy,
+    };
+    return this.preferredPort;
+  }
+
+  /** 当前绑定的端口（HUD 必须连自己这个窗口的服务）。 */
+  get port(): number {
+    return this.preferredPort;
+  }
+
+  /** 最近一次 probe 的绑定结果，用于排查多窗口连错端口。 */
+  get bindInfo(): { title: string; port: number; matched: boolean; candidates: unknown } | null {
+    return this.bindReport;
+  }
+
+  private async healthAt(port: number): Promise<HealthInfo | null> {
+    try {
+      const response = await fetch(`http://127.0.0.1:${port}/api/health`, { cache: 'no-store' });
+      if (!response.ok) {
+        return null;
+      }
+      const data = (await response.json()) as HealthInfo & { apiVersion?: number };
+      if (data.ok !== true || (data.apiVersion ?? 0) < 2) {
+        return null;
+      }
+      this.verifiedPorts.add(port);
+      return data;
+    } catch {
+      return null;
+    }
   }
 
   state(): Promise<SkinState> {
@@ -263,9 +317,8 @@ export class SkinApi {
         return false;
       }
       this.config = { ...this.config, ...config };
-      if (typeof config.port === 'number' && config.port > 0) {
-        this.preferredPort = config.port;
-      }
+      // 端口故意不跟着改：多窗口时这份 config 可能是别的窗口写的，
+      // 跟着换就会连到另一个窗口的服务（那边开着就亮、关着就黑）。
       this.verifiedPorts.clear();
       return true;
     } catch {
@@ -321,4 +374,15 @@ export class SkinApi {
 
     return (await response.json()) as T;
   }
+}
+
+/**
+ * 用扩展宿主给的特征串（工作区名 / 文件名）和 document.title 对一下：
+ * 命中几段就算几分，0 分表示这个端口不是本窗口。
+ */
+function hintScore(hint: string, title: string): number {
+  return hint
+    .split('|')
+    .map((part) => part.trim())
+    .filter((part) => part.length >= 2 && title.includes(part)).length;
 }

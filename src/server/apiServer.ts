@@ -47,10 +47,18 @@ export interface ApiServerDeps {
   onDanmaku?(items: DanmakuItem[], live?: boolean): void;
   getLiveRoom?(input: string, qn?: number): Promise<LiveRoomInfo>;
   getLiveDanmaku?(roomId: number): Promise<LiveDanmakuItem[]>;
+  /**
+   * 当前窗口的特征串（工作区名 / 当前文件名，用 | 分隔）：
+   * HUD 拿它和自己的 document.title 比对，确认该连哪个窗口的 API。
+   * 多窗口时所有窗口共用一份 bilibili-skin.config.js，端口会指到别的窗口。
+   */
+  getWindowHint?(): string;
   loginQr(): Promise<LoginQr>;
   loginPoll(key: string): Promise<LoginPoll>;
   logout(): Promise<void>;
   version: string;
+  /** 本窗口 API 实际监听的端口（由 startApiServer 写入） */
+  port?: number;
   cacheDir: string;
   /** 音频缓存上限（字节）；超出后按时间删最旧的，0 表示只保留最新一个 */
   audioCacheMaxBytes?: number;
@@ -70,6 +78,7 @@ export async function startApiServer(deps: ApiServerDeps): Promise<ApiServerHand
     const server = createServer(deps);
     try {
       await listen(server, port);
+      deps.port = port;
       return {
         port,
         close: () =>
@@ -123,6 +132,8 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
       audioTranscoder: findAudioTranscoder()?.name ?? null,
       ffmpeg: Boolean(findFfmpegBinary()),
       platform: process.platform,
+      port: deps.port,
+      windowHint: deps.getWindowHint?.() ?? '',
     });
     return;
   }
