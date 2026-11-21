@@ -74,7 +74,10 @@ export interface BiliUser {
 }
 
 export interface SkinState {
+  /** 当前窗口是否显示播放器（每个窗口独立） */
   visible: boolean;
+  /** 全局开关：还原工作台后为 false，所有窗口都要立刻收掉播放器 */
+  enabled: boolean;
   openLogin: boolean;
   video: VideoRef | null;
   settings: SkinSettings;

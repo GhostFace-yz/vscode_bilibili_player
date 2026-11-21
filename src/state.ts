@@ -4,15 +4,28 @@ import { parseVideoInput } from './bilibili/parse';
 import { getSkinSettings, updateSkinSettings } from './config';
 import type { SkinState, StatePatch, VideoRef } from './shared/types';
 
+export const ENABLED_KEY = 'bilibiliPlayer.enabledIntent';
 const VIDEO_KEY = 'bilibiliPlayer.video';
-const VISIBLE_KEY = 'bilibiliPlayer.visible';
 const OPEN_LOGIN_KEY = 'bilibiliPlayer.openLogin';
+/** 旧版本把显示状态存在 globalState 里，多窗口会一起显示/一起出声，升上来后清掉 */
+const LEGACY_VISIBLE_KEY = 'bilibiliPlayer.visible';
 
 export class ExtensionState {
+  /**
+   * 皮肤是否显示：只在当前窗口内存里保存。
+   * 放 globalState 会让「开启」把每个打开的窗口都点亮（同时出声），
+   * 关闭某个窗口的播放器时另一个窗口又关不掉。
+   */
+  private visible = false;
+
   constructor(
     private readonly context: vscode.ExtensionContext,
     private readonly auth: BiliAuth,
-  ) {}
+  ) {
+    if (this.context.globalState.get<boolean>(LEGACY_VISIBLE_KEY, false)) {
+      void this.context.globalState.update(LEGACY_VISIBLE_KEY, undefined);
+    }
+  }
 
   /**
    * 构造给皮肤用的状态快照。
@@ -28,7 +41,8 @@ export class ExtensionState {
     const video = stored === undefined ? this.fallbackVideo() : stored;
 
     return {
-      visible: this.context.globalState.get<boolean>(VISIBLE_KEY, false),
+      visible: this.visible,
+      enabled: this.context.globalState.get<boolean>(ENABLED_KEY, false),
       openLogin,
       video,
       settings: getSkinSettings(),
@@ -40,7 +54,7 @@ export class ExtensionState {
 
   async patch(patch: StatePatch): Promise<SkinState> {
     if (typeof patch.visible === 'boolean') {
-      await this.context.globalState.update(VISIBLE_KEY, patch.visible);
+      this.visible = patch.visible;
     }
     if (typeof patch.openLogin === 'boolean') {
       await this.context.globalState.update(OPEN_LOGIN_KEY, patch.openLogin);

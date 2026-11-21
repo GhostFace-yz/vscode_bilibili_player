@@ -15,7 +15,7 @@ import { startApiServer, type ApiServerHandle } from './server/apiServer';
 import { pruneAudioCache } from './server/audioCache';
 import { preferReachableUrl } from './server/mediaProbe';
 import { renderSkinConfig, type DanmakuItem, type SkinConfig } from './shared/types';
-import { ExtensionState } from './state';
+import { ENABLED_KEY, ExtensionState } from './state';
 import { findChecksumMismatches, fixChecksums } from './workbench/checksums';
 import { locateWorkbench, type WorkbenchInstall } from './workbench/locate';
 import { applyPatch, isPatched, restorePatch, SKIN_CSS, SKIN_JS, writeSkinConfig } from './workbench/patcher';
@@ -23,7 +23,6 @@ import { applyPatch, isPatched, restorePatch, SKIN_CSS, SKIN_JS, writeSkinConfig
 const TOKEN_KEY = 'bilibiliPlayer.apiToken';
 const SKIN_VERSION_KEY = 'bilibiliPlayer.skinVersion';
 /** 用户是否开过皮肤：VS Code 升级会覆盖 workbench.html，靠它决定要不要自动补回注入。 */
-const ENABLED_KEY = 'bilibiliPlayer.enabledIntent';
 /** 应用补丁后的那一次重载要自动显示；之后每次启动都默认关闭，等用户执行「开启」。 */
 const SHOW_ONCE_KEY = 'bilibiliPlayer.showOnce';
 
@@ -519,10 +518,24 @@ async function runRestore(context: vscode.ExtensionContext): Promise<void> {
     if (!install) {
       throw new Error('未找到 VS Code 的 workbench.html');
     }
-    if (!isPatched(install)) {
-      // 工作台已被升级覆盖：也把“自动恢复”关掉，否则下次启动又会自动注入。
+
+    /** 关掉全局开关：所有窗口的 HUD 下一次轮询（2s 内）都会自己收起来并暂停。 */
+    const closeEverywhere = async (): Promise<void> => {
       await context.globalState.update(ENABLED_KEY, false);
-      void vscode.window.showInformationMessage('当前没有应用皮肤，已关闭随 VS Code 升级自动恢复。');
+      await context.globalState.update(SHOW_ONCE_KEY, false);
+      await context.globalState.update(SKIN_VERSION_KEY, undefined);
+      // 本窗口立刻收掉；其它窗口靠 enabled:false 自己收（它们的 exthost 是独立实例）
+      const started = await services?.catch(() => undefined);
+      await started?.state.patch({ visible: false });
+    };
+
+    if (!isPatched(install)) {
+      // 工作台已经是原始文件（或者被别的窗口还原过）：也要把播放器收掉，
+      // 否则会出现“提示当前没有应用皮肤，但播放器还在播”。
+      await closeEverywhere();
+      void vscode.window.showInformationMessage(
+        'B 站皮肤已关闭（工作台当前是原始文件，也不会再随 VS Code 升级自动恢复）。',
+      );
       return;
     }
 
@@ -536,10 +549,8 @@ async function runRestore(context: vscode.ExtensionContext): Promise<void> {
       return;
     }
 
+    await closeEverywhere();
     restorePatch(install, { log });
-    await context.globalState.update(ENABLED_KEY, false);
-    await context.globalState.update(SHOW_ONCE_KEY, false);
-    await context.globalState.update(SKIN_VERSION_KEY, undefined);
     log('已还原工作台。', '皮肤');
 
     if (answer === '还原并重载') {

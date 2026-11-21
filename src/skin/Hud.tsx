@@ -484,8 +484,21 @@ export function Hud({ config, videoHost }: HudProps) {
 
   // 还没连上本地服务时什么都不显示：卸载/禁用扩展后残留的注入不会弹出空设置面板。
   // 默认关闭时也不去拉 playurl / 转码音轨，等执行「开启」后再加载。
-  const visible = state?.visible ?? false;
+  // enabled 是全局开关：还原工作台后所有窗口都要立刻收掉播放器。
+  const visible = (state?.visible ?? false) && (state?.enabled ?? true);
   visibleRef.current = visible;
+
+  // 别的窗口执行「还原工作台」后全局开关变成 false，本窗口也要把自己的 visible 归零，
+  // 否则以后再在任意窗口「开启」时，这些窗口会跟着一起亮（并且同时出声）。
+  useEffect(() => {
+    if (!state || state.enabled || !state.visible) {
+      return;
+    }
+    void api
+      .patch({ visible: false })
+      .then((next) => setState(next))
+      .catch(() => undefined);
+  }, [state, api]);
 
   useEffect(() => {
     if (visible) {
