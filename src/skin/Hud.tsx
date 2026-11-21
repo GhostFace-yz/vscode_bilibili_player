@@ -194,8 +194,6 @@ export function Hud({ api, videoHost }: HudProps) {
   const [contentAspect, setContentAspect] = useState(0);
   const [notice, setNotice] = useState<string | null>(null);
   const [audioReady, setAudioReady] = useState(false);
-  /** 音轨太久没就绪：不再卡在“加载中”，先让用户能播画面 */
-  const [audioStuck, setAudioStuck] = useState(false);
   const [audioBlocked, setAudioBlocked] = useState(false);
   const [loading, setLoading] = useState(false);
   const [buffering, setBuffering] = useState(false);
@@ -392,7 +390,6 @@ export function Hud({ api, videoHost }: HudProps) {
       hasPlayedRef.current = false;
       toast.dismiss('bili-ready');
       setAudioReady(false);
-      setAudioStuck(false);
       setAudioSrc(null);
       mediaErrorRef.current = null;
       setLoading(true);
@@ -484,6 +481,9 @@ export function Hud({ api, videoHost }: HudProps) {
 
   // 还没连上本地服务时什么都不显示：卸载/禁用扩展后残留的注入不会弹出空设置面板。
   // 默认关闭时也不去拉 playurl / 转码音轨，等执行「开启」后再加载。
+  /** 音轨还没就绪：只提示，不阻塞播放 */
+  const audioPreparing = Boolean(audioSrc) && !audioReady;
+
   // enabled 是全局开关：还原工作台后所有窗口都要立刻收掉播放器。
   const visible = (state?.visible ?? false) && (state?.enabled ?? true);
   visibleRef.current = visible;
@@ -796,15 +796,14 @@ export function Hud({ api, videoHost }: HudProps) {
         return;
       }
       const enough = video.readyState >= 3 || bufferedAhead(video) >= 2;
-      const audioOk = !info.audioUrl || audioReady || audioStuck;
-      if (!enough || !audioOk) {
+      if (!enough) {
         return;
       }
       readyPromptedRef.current = true;
       window.clearInterval(timer);
-      toast(info.audioUrl ? '音频已就绪' : '视频已就绪', {
+      toast(audioReady ? '音频已就绪' : '视频已就绪', {
         id: 'bili-ready',
-        description: '点击右下角播放按钮开始播放',
+        description: audioReady ? '点击右下角播放按钮开始播放' : '音轨还在同步，点播放可以先看画面',
         duration: 8000,
         action: {
           label: '播放',
@@ -821,7 +820,7 @@ export function Hud({ api, videoHost }: HudProps) {
       });
     }, 500);
     return () => window.clearInterval(timer);
-  }, [visible, liveMode, srcUrl, playing, buffering, info, audioReady, audioStuck]);
+  }, [visible, liveMode, srcUrl, playing, buffering, info, audioReady]);
 
   // 环境检查：没装 ffmpeg 时视频没声音，Windows 上很常见
   useEffect(() => {
@@ -1034,16 +1033,14 @@ export function Hud({ api, videoHost }: HudProps) {
   }, [audioSrc]);
 
   // 音轨线路卡住（mcdn 节点经常收了请求不发数据，<audio> 连 error 都不给）：
-  // 15s 没拿到 metadata 就换备用线路；25s 还没好就先放开播放，别让按钮一直转圈。
+  // 15s 没拿到 metadata 就换备用线路；画面照常可以先播。
   const handleAudioErrorRef = useRef(handleAudioError);
   handleAudioErrorRef.current = handleAudioError;
 
   useEffect(() => {
     if (!audioSrc || audioReady) {
-      setAudioStuck(false);
       return;
     }
-    const stuckTimer = window.setTimeout(() => setAudioStuck(true), 25_000);
     const switchTimer = window.setTimeout(() => {
       const audio = audioRef.current;
       if (!audio || audio.error || audio.readyState >= 1) {
@@ -1058,10 +1055,7 @@ export function Hud({ api, videoHost }: HudProps) {
       audioWavTried.current = true;
       handleAudioErrorRef.current();
     }, 15_000);
-    return () => {
-      window.clearTimeout(stuckTimer);
-      window.clearTimeout(switchTimer);
-    };
+    return () => window.clearTimeout(switchTimer);
   }, [audioSrc, audioReady, logClient]);
 
   // 从 DASH 切回原生 mp4 时，确保旧的独立音轨被彻底停掉。
@@ -2100,8 +2094,8 @@ export function Hud({ api, videoHost }: HudProps) {
   };
 
   // 所有提示都走 sonner，不再往设置面板里塞 alert（否则会把面板撑高）。
-  const audioPreparing = Boolean(audioSrc) && !audioReady && !audioStuck;
-  const busy = loading || audioPreparing || liveLoading;
+  // 音轨没就绪不拦着播放：按钮照常是播放键，顶部用 toast 提示“音轨同步中”
+  const busy = loading || liveLoading;
   const isLightTheme =
     typeof document !== 'undefined' && document.body.classList.contains('vscode-light');
 
@@ -2123,10 +2117,10 @@ export function Hud({ api, videoHost }: HudProps) {
       return;
     }
     const timer = window.setTimeout(() => {
-      toast.loading('正在同步音频，请稍后…', {
+      toast('音轨同步中…', {
         id: 'bili-audio',
         duration: Infinity,
-        description: '首次播放（或切换清晰度/视频）需要把 AAC 音轨转成可播放的 MP3，视频越长等待越久',
+        description: '可以先播画面，声音就绪后会自动跟上（首次播放/切清晰度需要先把音轨转成 MP3）',
       });
     }, 300);
     return () => window.clearTimeout(timer);
