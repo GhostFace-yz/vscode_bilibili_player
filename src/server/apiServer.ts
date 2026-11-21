@@ -415,20 +415,56 @@ async function ensureTranscoded(
   }
 }
 
+/** 下载音轨的超时：等响应头 / 中途没有新数据都算卡死（mcdn 节点会挂住不发数据）。 */
+const DOWNLOAD_HEADERS_TIMEOUT_MS = 8_000;
+const DOWNLOAD_STALL_TIMEOUT_MS = 10_000;
+
 async function downloadToFile(target: URL, file: string): Promise<void> {
-  const upstream = await fetch(target, {
-    headers: {
-      Referer: 'https://www.bilibili.com/',
-      'User-Agent': BILI_UA,
-    },
-  });
+  const controller = new AbortController();
+  let timer = setTimeout(() => controller.abort(), DOWNLOAD_HEADERS_TIMEOUT_MS);
+
+  let upstream: Response;
+  try {
+    upstream = await fetch(target, {
+      headers: {
+        Referer: 'https://www.bilibili.com/',
+        'User-Agent': BILI_UA,
+      },
+      signal: controller.signal,
+    });
+  } catch (error) {
+    throw new Error(
+      error instanceof Error && error.name === 'AbortError'
+        ? '音轨下载超时（等待响应）'
+        : `音轨下载失败：${error instanceof Error ? error.message : String(error)}`,
+    );
+  } finally {
+    clearTimeout(timer);
+  }
+
   if (!upstream.ok || !upstream.body) {
     throw new Error(`音轨下载 HTTP ${upstream.status}`);
   }
-  await pipeline(
-    Readable.fromWeb(upstream.body as unknown as import('node:stream/web').ReadableStream),
-    fs.createWriteStream(file),
-  );
+
+  // 下载过程中超过 10s 没有新数据就放弃，交给上层回退到别的线路。
+  const source = Readable.fromWeb(upstream.body as unknown as import('node:stream/web').ReadableStream);
+  const resetStallTimer = () => {
+    clearTimeout(timer);
+    timer = setTimeout(() => controller.abort(), DOWNLOAD_STALL_TIMEOUT_MS);
+  };
+  resetStallTimer();
+  source.on('data', resetStallTimer);
+  try {
+    await pipeline(source, fs.createWriteStream(file));
+  } catch (error) {
+    throw new Error(
+      error instanceof Error && error.name === 'AbortError'
+        ? '音轨下载超时（传输中断）'
+        : `音轨下载失败：${error instanceof Error ? error.message : String(error)}`,
+    );
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 async function serveFile(

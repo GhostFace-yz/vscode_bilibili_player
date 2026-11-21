@@ -194,6 +194,8 @@ export function Hud({ api, videoHost }: HudProps) {
   const [contentAspect, setContentAspect] = useState(0);
   const [notice, setNotice] = useState<string | null>(null);
   const [audioReady, setAudioReady] = useState(false);
+  /** 音轨太久没就绪：不再卡在“加载中”，先让用户能播画面 */
+  const [audioStuck, setAudioStuck] = useState(false);
   const [audioBlocked, setAudioBlocked] = useState(false);
   const [loading, setLoading] = useState(false);
   const [buffering, setBuffering] = useState(false);
@@ -390,6 +392,7 @@ export function Hud({ api, videoHost }: HudProps) {
       hasPlayedRef.current = false;
       toast.dismiss('bili-ready');
       setAudioReady(false);
+      setAudioStuck(false);
       setAudioSrc(null);
       mediaErrorRef.current = null;
       setLoading(true);
@@ -793,7 +796,7 @@ export function Hud({ api, videoHost }: HudProps) {
         return;
       }
       const enough = video.readyState >= 3 || bufferedAhead(video) >= 2;
-      const audioOk = !info.audioUrl || audioReady;
+      const audioOk = !info.audioUrl || audioReady || audioStuck;
       if (!enough || !audioOk) {
         return;
       }
@@ -818,7 +821,7 @@ export function Hud({ api, videoHost }: HudProps) {
       });
     }, 500);
     return () => window.clearInterval(timer);
-  }, [visible, liveMode, srcUrl, playing, buffering, info, audioReady]);
+  }, [visible, liveMode, srcUrl, playing, buffering, info, audioReady, audioStuck]);
 
   // 环境检查：没装 ffmpeg 时视频没声音，Windows 上很常见
   useEffect(() => {
@@ -1029,6 +1032,37 @@ export function Hud({ api, videoHost }: HudProps) {
   useEffect(() => {
     setAudioReady(false);
   }, [audioSrc]);
+
+  // 音轨线路卡住（mcdn 节点经常收了请求不发数据，<audio> 连 error 都不给）：
+  // 12s 没拿到 metadata 就换备用线路；20s 还没好就先放开播放，别让按钮一直转圈。
+  const handleAudioErrorRef = useRef(handleAudioError);
+  handleAudioErrorRef.current = handleAudioError;
+
+  useEffect(() => {
+    if (!audioSrc || audioReady) {
+      setAudioStuck(false);
+      return;
+    }
+    const stuckTimer = window.setTimeout(() => setAudioStuck(true), 20_000);
+    const switchTimer = window.setTimeout(() => {
+      const audio = audioRef.current;
+      if (!audio || audio.error || audio.readyState >= 1) {
+        return;
+      }
+      logClient('warn', 'audio stalled, switching line', {
+        readyState: audio.readyState,
+        networkState: audio.networkState,
+        src: (audio.currentSrc || audio.getAttribute('src') || '').slice(-120),
+      });
+      // 同一地址换成 WAV 也一样会卡，直接走备用线路
+      audioWavTried.current = true;
+      handleAudioErrorRef.current();
+    }, 12_000);
+    return () => {
+      window.clearTimeout(stuckTimer);
+      window.clearTimeout(switchTimer);
+    };
+  }, [audioSrc, audioReady, logClient]);
 
   // 从 DASH 切回原生 mp4 时，确保旧的独立音轨被彻底停掉。
   useEffect(() => {
@@ -2066,7 +2100,7 @@ export function Hud({ api, videoHost }: HudProps) {
   };
 
   // 所有提示都走 sonner，不再往设置面板里塞 alert（否则会把面板撑高）。
-  const audioPreparing = Boolean(audioSrc) && !audioReady;
+  const audioPreparing = Boolean(audioSrc) && !audioReady && !audioStuck;
   const busy = loading || audioPreparing || liveLoading;
   const isLightTheme =
     typeof document !== 'undefined' && document.body.classList.contains('vscode-light');
@@ -2582,8 +2616,8 @@ export function Hud({ api, videoHost }: HudProps) {
                   type="button"
                   className="bili-play-btn"
                   aria-label={busy ? '加载中' : playing ? '暂停' : '播放'}
-                  aria-busy={busy}
-                  onClick={togglePlay}
+                  aria-busy={busy || buffering}
+                  onClick={busy || buffering ? undefined : togglePlay}
                 >
                   {busy ? (
                     <span className="bili-spinner" />
@@ -3077,7 +3111,7 @@ export function Hud({ api, videoHost }: HudProps) {
                   pillCollapsing ? '收起中' : buffering ? '缓冲中' : busy ? '加载中' : playing ? '暂停' : '播放'
                 }
                 aria-busy={busy || buffering}
-                onClick={pillCollapsing || buffering ? undefined : togglePlay}
+                onClick={pillCollapsing || buffering || busy ? undefined : togglePlay}
               >
                 {busy || buffering ? (
                   <span className="bili-spinner" />
