@@ -8,6 +8,7 @@ import { pipeline } from 'node:stream/promises';
 import { findAudioTranscoder, findFfmpegBinary, type AudioTranscoder } from './audioTranscode';
 import { pruneAudioCache } from './audioCache';
 import { detectContentAspect, type ContentAspect } from './contentAspect';
+import { BILI_UA } from '../bilibili/client';
 import { PORT_RANGE } from '../shared/types';
 import type {
   DanmakuItem,
@@ -404,8 +405,7 @@ async function downloadToFile(target: URL, file: string): Promise<void> {
   const upstream = await fetch(target, {
     headers: {
       Referer: 'https://www.bilibili.com/',
-      'User-Agent':
-        'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120 Safari/537.36',
+      'User-Agent': BILI_UA,
     },
   });
   if (!upstream.ok || !upstream.body) {
@@ -509,8 +509,8 @@ async function proxyMedia(
 
   const headers: Record<string, string> = {
     Referer: 'https://www.bilibili.com/',
-    'User-Agent':
-      'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120 Safari/537.36',
+    // 和请求 playurl 时用同一个 UA：部分 mcdn 节点会因为 UA 不一致直接 403。
+    'User-Agent': BILI_UA,
   };
   if (req.headers.range) {
     headers.Range = req.headers.range;

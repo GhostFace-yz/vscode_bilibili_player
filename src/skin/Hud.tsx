@@ -204,6 +204,12 @@ export function Hud({ config, videoHost }: HudProps) {
   /** 首次加载后是否已经提示过“点击播放”，以及用户是否已经主动播放过 */
   const readyPromptedRef = useRef(false);
   const startedRef = useRef(false);
+  /** 这一个视频源是否真的播起来过（onPlaying 之后才为 true）。 */
+  const hasPlayedRef = useRef(false);
+  /** 最近一次 play() 的时间：初始缓冲期间不能 pause()，否则会打断 play()。 */
+  const playRequestedAt = useRef(0);
+  /** 点播暂停在第一帧时，确保浏览器真的把这一帧画出来（每换一次源只做一次）。 */
+  const frameNudged = useRef(false);
   const [error, setError] = useState<string | null>(null);
   const [panelPref] = useState<PanelPref>(readPanelPref);
   const [open, setOpen] = useState(panelPref === 'open');
@@ -261,12 +267,7 @@ export function Hud({ config, videoHost }: HudProps) {
   }, []);
 
   const notePlayError = useCallback((error: unknown) => {
-    const name =
-      error instanceof DOMException
-        ? error.name
-        : typeof error === 'object' && error !== null && 'name' in error
-          ? String((error as { name?: unknown }).name)
-          : '';
+    const name = errorName(error);
     // 暂停/切源会打断 play()，这是正常 AbortError，不能弹“被阻止”提示。
     if (name === 'AbortError') {
       return;
@@ -389,6 +390,7 @@ export function Hud({ config, videoHost }: HudProps) {
       setBuffering(false);
       readyPromptedRef.current = false;
       startedRef.current = false;
+      hasPlayedRef.current = false;
       toast.dismiss('bili-ready');
       setAudioReady(false);
       setAudioSrc(null);
@@ -730,6 +732,10 @@ export function Hud({ config, videoHost }: HudProps) {
     applyMediaSettings();
     video.setAttribute('referrerpolicy', 'no-referrer');
     srcChangedAt.current = Date.now();
+    hasPlayedRef.current = false;
+    frameNudged.current = false;
+    bufferingRef.current = false;
+    setBuffering(false);
     window.clearTimeout(errorRetryTimer.current);
     video.load();
 
@@ -746,6 +752,7 @@ export function Hud({ config, videoHost }: HudProps) {
     }
 
     if ((liveMode || settingsRef.current.autoplay) && visibleRef.current) {
+      playRequestedAt.current = Date.now();
       void video.play()?.catch((error) => {
         // VS Code/Chromium 可能阻止带声音的自动播放；提醒用户点一下。
         if (settingsRef.current.muted === false) {
@@ -794,6 +801,7 @@ export function Hud({ config, videoHost }: HudProps) {
               return;
             }
             startedRef.current = true;
+            playRequestedAt.current = Date.now();
             void current.play().catch(() => undefined);
           },
         },
@@ -1128,6 +1136,7 @@ export function Hud({ config, videoHost }: HudProps) {
     }
     bufferingRef.current = false;
     setBuffering(false);
+    playRequestedAt.current = Date.now();
     void video.play().catch(() => {
       // 自动播放限制/用户刚暂停：回到暂停态，下一轮再试
     });
@@ -1143,6 +1152,16 @@ export function Hud({ config, videoHost }: HudProps) {
     bufferingRef.current = true;
     setBuffering(true);
     audioRef.current?.pause();
+    // 首帧/首次缓冲阶段调用 pause() 会让 play() 的 Promise 以
+    // AbortError（“The play() request was interrupted by a call to pause()”）结束，
+    // 用户看到的就是“播放失败”。还没真正播起来就先让它继续缓冲。
+    if (!hasPlayedRef.current) {
+      return;
+    }
+    // 用户刚点播放 / 刚 seek 完也让缓冲自然进行，别立刻打断。
+    if (Date.now() - playRequestedAt.current < 1200) {
+      return;
+    }
     video.pause();
   }, []);
 
@@ -1151,7 +1170,17 @@ export function Hud({ config, videoHost }: HudProps) {
     if (!buffering) {
       return;
     }
-    const timer = window.setInterval(() => tryResume(), 400);
+    const startedAt = Date.now();
+    const timer = window.setInterval(() => {
+      tryResume();
+      const video = videoRef.current;
+      // 20s 还拿不到任何画面数据：别再让按钮一直锁在“加载中”，
+      // 让用户可以再点一次播放（或点重试重新拉地址）。
+      if (video && video.readyState < 2 && Date.now() - startedAt > 20_000) {
+        bufferingRef.current = false;
+        setBuffering(false);
+      }
+    }, 400);
     return () => window.clearInterval(timer);
   }, [buffering, tryResume]);
 
@@ -1799,10 +1828,19 @@ export function Hud({ config, videoHost }: HudProps) {
     // 用户点击是手势，确保此时把静音/音量重新应用一次再 play，避免自动播放阶段被静音后一直无声。
     applyMediaSettings();
     if (video.paused) {
+      playRequestedAt.current = Date.now();
       void video
         .play()
         .then(() => setAudioBlocked(false))
         .catch((error) => {
+          // 缓冲还没起来时会被 waiting 里的 pause() 打断，这不算失败，
+          // 继续等缓冲区够了自动播（spinner 已经在转）。
+          if (isAbortError(error)) {
+            return;
+          }
+          // play() 真的失败了（例如被浏览器拦截）：把加载态收掉，按钮要能再点。
+          bufferingRef.current = false;
+          setBuffering(false);
           notePlayError(error);
           setError(`播放失败：${toMessage(error)}`);
         });
@@ -2338,6 +2376,23 @@ export function Hud({ config, videoHost }: HudProps) {
             setDuration(event.currentTarget.duration || 0);
             syncAudio();
           }}
+          onLoadedData={(event) => {
+            // 点播不自动播放时，暂停着的 <video> 有时不出首帧（看起来就是“没画面”）。
+            // 轻微 seek 一下强制解码并绘制第一帧；每换一次源只做一次。
+            const video = event.currentTarget;
+            if (frameNudged.current || hasPlayedRef.current || !video.paused) {
+              return;
+            }
+            if (video.currentTime > 0.05 || video.readyState < 2) {
+              return;
+            }
+            frameNudged.current = true;
+            try {
+              video.currentTime = 0.04;
+            } catch {
+              // 还没到可 seek 状态就忽略
+            }
+          }}
           onResize={(event) => updateVideoRatio(event.currentTarget)}
           onTimeUpdate={(event) => {
             const time = event.currentTarget.currentTime;
@@ -2357,6 +2412,7 @@ export function Hud({ config, videoHost }: HudProps) {
             syncAudio();
           }}
           onPlaying={() => {
+            hasPlayedRef.current = true;
             bufferingRef.current = false;
             setBuffering(false);
             syncAudio();
@@ -3251,6 +3307,21 @@ function formatTime(value: number): string {
 
 function toMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+function errorName(error: unknown): string {
+  if (error instanceof DOMException) {
+    return error.name;
+  }
+  if (typeof error === 'object' && error !== null && 'name' in error) {
+    return String((error as { name?: unknown }).name);
+  }
+  return '';
+}
+
+/** play() 被 pause()/切源打断属于正常流程，不能当成播放失败弹给用户。 */
+function isAbortError(error: unknown): boolean {
+  return errorName(error) === 'AbortError';
 }
 
 function safeJson(value: unknown): string {

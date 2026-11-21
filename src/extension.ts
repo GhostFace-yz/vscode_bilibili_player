@@ -13,6 +13,7 @@ import { getSettings, migrateLegacyFitSetting } from './config';
 import { findAudioTranscoder } from './server/audioTranscode';
 import { startApiServer, type ApiServerHandle } from './server/apiServer';
 import { pruneAudioCache } from './server/audioCache';
+import { preferReachableUrl } from './server/mediaProbe';
 import { renderSkinConfig, type DanmakuItem, type SkinConfig } from './shared/types';
 import { ExtensionState } from './state';
 import { findChecksumMismatches, fixChecksums } from './workbench/checksums';
@@ -143,12 +144,20 @@ async function initServices(context: vscode.ExtensionContext): Promise<Services>
       // 渲染进程的 <video> 带不了 Referer，直连会 403 → MEDIA_ERR_SRC_NOT_SUPPORTED。
       const proxied = (videoUrl: string) =>
         `http://127.0.0.1:${apiPort}/api/video?url=${encodeURIComponent(videoUrl)}&token=${encodeURIComponent(token)}`;
+
+      // playurl 给的第一个 CDN 偶尔是坏的（403/超时），交给 <video> 就是错误码 4：
+      // 表现是“开启后没有画面，点重试才正常”。先探一下，把能用的排到最前面。
+      const [videoPick, audioPick] = await Promise.all([
+        preferReachableUrl(info.url, info.backupUrls ?? []),
+        info.audioUrl ? preferReachableUrl(info.audioUrl, info.audioBackupUrls ?? []) : Promise.resolve(null),
+      ]);
+
       return {
         ...info,
-        url: proxied(info.url),
-        backupUrls: info.backupUrls?.map(proxied) ?? [],
-        audioUrl: info.audioUrl ? transcoded(info.audioUrl) : undefined,
-        audioBackupUrls: info.audioBackupUrls?.map(transcoded),
+        url: proxied(videoPick.url),
+        backupUrls: videoPick.backups.map(proxied),
+        audioUrl: audioPick ? transcoded(audioPick.url) : undefined,
+        audioBackupUrls: audioPick ? audioPick.backups.map(transcoded) : undefined,
       };
     },
     getDanmaku: async (cid) => {
