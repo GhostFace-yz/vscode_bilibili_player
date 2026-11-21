@@ -35,18 +35,54 @@ const sleep = (ms: number) => new Promise<void>((resolve) => window.setTimeout(r
 async function waitForApi(config: SkinConfig): Promise<SkinApi | null> {
   const api = new SkinApi(config);
   const deadline = Date.now() + CONNECT_TIMEOUT_MS;
-  let attempt = 0;
+  /** 已经探到“别人的”服务的时间：再等一会儿自己的扩展宿主起来 */
+  let fallbackAt = 0;
   while (Date.now() < deadline) {
-    const port = await api.probe();
-    if (port !== null) {
-      // 多窗口时端口可能连到别的窗口，把绑定结果记进日志方便排查
-      api.log({ level: 'info', message: 'hud bound', data: api.bindInfo });
-      return api;
+    if (await api.probe()) {
+      if (api.bindInfo?.matched) {
+        api.log({ level: 'info', message: 'hud bound', data: api.bindInfo });
+        return api;
+      }
+      // 新开的窗口，页面比扩展宿主先起来：这时只能扫到别的窗口的服务。
+      // 等 4s，等自己的服务出现后再绑定，别一上来就连到别人窗口。
+      if (!fallbackAt) {
+        fallbackAt = Date.now();
+      } else if (Date.now() - fallbackAt > 4000) {
+        break;
+      }
     }
-    attempt += 1;
-    await sleep(attempt <= 6 ? 250 : 1000);
+    await sleep(500);
   }
-  return null;
+
+  if (!(await api.probe())) {
+    return null;
+  }
+  api.log({ level: 'info', message: 'hud bound (fallback)', data: api.bindInfo });
+  return api;
+}
+
+/**
+ * 绑定到别的窗口时，隔几秒再看一眼：自己的服务起来后切回来。
+ * （新窗口第一次加载几乎都会走到这里）
+ */
+function watchBinding(api: SkinApi): void {
+  if (api.bindInfo?.matched) {
+    return;
+  }
+  let tries = 0;
+  const timer = window.setInterval(() => {
+    tries += 1;
+    void api.probe().then((port) => {
+      if (port !== null && api.bindInfo?.matched) {
+        api.log({ level: 'info', message: 'hud rebound', data: api.bindInfo });
+        window.clearInterval(timer);
+        return;
+      }
+      if (tries >= 12) {
+        window.clearInterval(timer);
+      }
+    });
+  }, 2500);
 }
 
 /** 探测失败：把可能残留的样式/节点清干净，让编辑区恢复成普通 VS Code。 */
@@ -102,8 +138,9 @@ async function boot(): Promise<void> {
     window.setTimeout(() => observer.disconnect(), 10_000);
   }
 
-  // 用探测到的端口覆盖 config.port：HUD 必须连自己这个窗口的服务
-  createRoot(hudHost).render(<Hud config={{ ...config, port: api.port }} videoHost={videoHost} />);
+  // 直接把绑定好的 api 交给 HUD：后续重新绑定也能立刻生效
+  watchBinding(api);
+  createRoot(hudHost).render(<Hud api={api} videoHost={videoHost} />);
 }
 
 if (document.readyState === 'loading') {

@@ -2,7 +2,6 @@ import {
   useCallback,
   useEffect,
   useLayoutEffect,
-  useMemo,
   useRef,
   useState,
   type CSSProperties,
@@ -36,7 +35,6 @@ import type {
   LoginQr,
   MiniRect,
   PlayInfo,
-  SkinConfig,
   SkinSettings,
   SkinState,
   VideoRef,
@@ -59,7 +57,7 @@ import logoUrl from './logo.png';
 gsap.registerPlugin(useGSAP);
 
 interface HudProps {
-  config: SkinConfig;
+  api: SkinApi;
   videoHost: HTMLElement;
 }
 
@@ -135,8 +133,7 @@ function clampNumber(value: number, min: number, max: number): number {
 const REDUCED_MOTION =
   typeof window !== 'undefined' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
-export function Hud({ config, videoHost }: HudProps) {
-  const api = useMemo(() => new SkinApi(config), [config]);
+export function Hud({ api, videoHost }: HudProps) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const hudRootRef = useRef<HTMLDivElement | null>(null);

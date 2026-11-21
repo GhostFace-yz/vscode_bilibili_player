@@ -224,6 +224,8 @@ async function initServices(context: vscode.ExtensionContext): Promise<Services>
 
   apiPort = server.port;
   log(`本地 API 已启动：http://127.0.0.1:${server.port}`, '启动');
+  // 多窗口排查用：HUD 会用这串去匹配自己窗口的 document.title
+  log(`窗口特征：${windowHint() || '(空)'}`, '启动');
   log(`客户端日志：${clientLogPath}`, '启动');
   const transcoder = findAudioTranscoder();
   log(
