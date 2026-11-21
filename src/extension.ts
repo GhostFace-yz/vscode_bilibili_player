@@ -36,14 +36,16 @@ interface Services {
   liveDanmaku: LiveDanmakuHub;
 }
 
-/** 全局只有一个窗口能开启：记录占用者的 API 端口和时间 */
+/** 全局只有一个窗口能开启：记录占用者的端口 + 会话号 */
 const OWNER_KEY = 'bilibiliPlayer.ownerWindow';
 interface WindowOwner {
   port: number;
+  /** 扩展宿主会话号：端口会被复用，靠它区分“同一个窗口”和“上个会话残留” */
+  session: string;
   at: number;
 }
-/** 本次扩展激活的时间：端口会被复用，用来识别上一个会话留下的占用记录 */
-const bootedAt = Date.now();
+/** 本次扩展激活的会话号（每个窗口每次启动都不同） */
+const SESSION_ID = randomBytes(8).toString('hex');
 
 let output: vscode.OutputChannel;
 let statusBar: vscode.StatusBarItem;
@@ -140,6 +142,7 @@ async function initServices(context: vscode.ExtensionContext): Promise<Services>
     patchState: (patch) => state.patch(patch),
     // HUD 用这个特征串把端口绑回自己这个窗口（多窗口时 config 文件是共用的）
     getWindowHint: () => windowHint(),
+    sessionId: SESSION_ID,
     getPlayInfo: async (ref, qn) => {
       const info = await getPlayInfo(auth.client(), ref, qn);
       log(
@@ -249,10 +252,22 @@ async function initServices(context: vscode.ExtensionContext): Promise<Services>
     await started.state.patch({ visible: showOnce });
     if (showOnce) {
       await context.globalState.update(SHOW_ONCE_KEY, false);
-      await context.globalState.update(OWNER_KEY, { port: server.port, at: Date.now() } satisfies WindowOwner);
+      await context.globalState.update(OWNER_KEY, {
+        port: server.port,
+        session: SESSION_ID,
+        at: Date.now(),
+      } satisfies WindowOwner);
     }
     await context.globalState.update(ENABLED_KEY, true);
   }
+  // 上个会话 Cmd+Q 留下的占用记录：端口可能被别的窗口复用了，
+  // 不清掉会让新窗口「开启」时误报"另一个窗口已开启"。
+  const staleOwner = context.globalState.get<WindowOwner>(OWNER_KEY);
+  if (staleOwner && !(await isOwnerAlive(staleOwner, server.port))) {
+    await context.globalState.update(OWNER_KEY, undefined);
+    log('已清理上个会话残留的窗口占用记录', '皮肤');
+  }
+
   await syncSkinConfig(context, started);
   if (install && !patched) {
     await reapplyAfterUpdate(context, started, version);
@@ -446,15 +461,21 @@ async function runEnable(context: vscode.ExtensionContext): Promise<void> {
     // 否则会出现两个窗口同时播放、关掉一个另一个还在的情况。
     const owner = context.globalState.get<WindowOwner>(OWNER_KEY);
     if (owner && owner.port !== started.port && (await isOwnerAlive(owner, started.port))) {
+      log(`拒绝开启：已被端口 ${owner.port}（会话 ${owner.session.slice(0, 6)}）占用`, '皮肤');
       void vscode.window.showWarningMessage(
         '另一个 VS Code 窗口已经开启了 bili-in-code，请先在那个窗口执行「关闭（还原工作台）」再开启。',
       );
       return;
     }
 
-    await context.globalState.update(OWNER_KEY, { port: started.port, at: Date.now() } satisfies WindowOwner);
+    await context.globalState.update(OWNER_KEY, {
+      port: started.port,
+      session: SESSION_ID,
+      at: Date.now(),
+    } satisfies WindowOwner);
     await started.state.patch({ visible: true });
     await context.globalState.update(ENABLED_KEY, true);
+    log(`已开启（端口 ${started.port}，会话 ${SESSION_ID.slice(0, 6)}）`, '皮肤');
     void vscode.window.showInformationMessage('B站皮肤已开启：右下角 HUD 可播放视频（若没出现请重载窗口）。');
   } catch (error) {
     reportError(error);
@@ -488,8 +509,9 @@ async function isOwnerAlive(owner: WindowOwner, myPort: number): Promise<boolean
   if (!owner || !owner.port) {
     return false;
   }
+  // 端口会被复用：只有“同一个扩展宿主会话”才算还是这个窗口开着。
   if (owner.port === myPort) {
-    return owner.at >= bootedAt;
+    return owner.session === SESSION_ID;
   }
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 1500);
@@ -500,9 +522,19 @@ async function isOwnerAlive(owner: WindowOwner, myPort: number): Promise<boolean
     if (!response.ok) {
       return false;
     }
-    const health = (await response.json()) as { ok?: boolean; apiVersion?: number };
-    // 端口可能被别的程序复用，只有本扩展的服务才算“还开着”
-    return health.ok === true && (health.apiVersion ?? 0) >= 2;
+    const health = (await response.json()) as {
+      ok?: boolean;
+      apiVersion?: number;
+      sessionId?: string;
+    };
+    // 端口可能被别的程序、或者上一个会话的另一个窗口占着：
+    // 必须 ok + apiVersion + 会话号都对上，才算“占用者还开着”。
+    return (
+      health.ok === true &&
+      (health.apiVersion ?? 0) >= 2 &&
+      Boolean(owner.session) &&
+      health.sessionId === owner.session
+    );
   } catch {
     return false;
   } finally {

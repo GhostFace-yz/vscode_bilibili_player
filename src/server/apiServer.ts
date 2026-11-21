@@ -53,6 +53,8 @@ export interface ApiServerDeps {
    * 多窗口时所有窗口共用一份 bilibili-skin.config.js，端口会指到别的窗口。
    */
   getWindowHint?(): string;
+  /** 本扩展宿主会话号：多窗口/端口复用时区分是谁 */
+  sessionId?: string;
   loginQr(): Promise<LoginQr>;
   loginPoll(key: string): Promise<LoginPoll>;
   logout(): Promise<void>;
@@ -134,6 +136,7 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
       platform: process.platform,
       port: deps.port,
       windowHint: deps.getWindowHint?.() ?? '',
+      sessionId: deps.sessionId ?? '',
     });
     return;
   }
