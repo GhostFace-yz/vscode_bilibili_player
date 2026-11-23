@@ -145,10 +145,29 @@ function mount(api: SkinApi): void {
   createRoot(hudHost).render(<Hud api={api} videoHost={videoHost} />);
 }
 
+/** 读取注入配置：优先用 config 脚本设置的全局变量，读不到就自己 fetch 一份（Windows 兜底）。 */
+async function loadConfig(): Promise<SkinConfig | null> {
+  const injected = window.__BILI_SKIN_CONFIG__;
+  if (injected && injected.port && injected.token) {
+    return injected;
+  }
+  try {
+    const response = await fetch(`./bilibili-skin.config.js?t=${Date.now()}`, { cache: 'no-store' });
+    if (!response.ok) {
+      return null;
+    }
+    const text = await response.text();
+    const match = /window\.__BILI_SKIN_CONFIG__\s*=\s*(\{[\s\S]*\});/.exec(text);
+    return match ? (JSON.parse(match[1]) as SkinConfig) : null;
+  } catch {
+    return null;
+  }
+}
+
 async function boot(): Promise<void> {
-  const config = window.__BILI_SKIN_CONFIG__;
+  const config = await loadConfig();
   if (!config) {
-    console.warn('[bilibili-skin] missing window.__BILI_SKIN_CONFIG__');
+    console.warn('[bilibili-skin] 读不到 bilibili-skin.config.js，HUD 无法启动');
     return;
   }
   if (window.__BILI_SKIN_MOUNTED__) {

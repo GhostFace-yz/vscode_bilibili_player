@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.7.18
+
+- 修复 Windows 上「注入成功但 HUD 完全不出现、本地 API 从未被探测」：注入的 `<script>`/`<link>`
+  去掉了 `?v=` 查询串（Windows 的 vscode-file 处理器对带查询串的相对路径解析不稳，脚本可能根本没加载）
+- 配置读取加兜底：`window.__BILI_SKIN_CONFIG__` 缺失时直接 fetch `bilibili-skin.config.js`
+  （CSP 的 connect-src 放开 `vscode-file:`）
+- 诊断增强：资源文件给出精确字节数、列出 workbench.html 里引用到的资源是否都存在、打印注入片段
+
 ## 0.7.17
 
 - 新增 `bili-in-code: 诊断` 命令：一次列出注入是否生效、资源文件、安装目录可写、注入配置、

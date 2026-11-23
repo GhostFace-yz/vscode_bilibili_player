@@ -458,10 +458,31 @@ async function runDiagnose(context: vscode.ExtensionContext): Promise<void> {
     for (const file of [SKIN_JS, SKIN_CSS, SKIN_CONFIG]) {
       const target = path.join(assetsDir, file);
       try {
-        push(`  ${file}`, `${Math.round(fs.statSync(target).size / 1024)} KB`);
+        const size = fs.statSync(target).size;
+        push(`  ${file}`, size >= 1024 ? `${Math.round(size / 1024)} KB（${size} B）` : `${size} B`);
       } catch {
         push(`  ${file}`, '缺失');
       }
+    }
+    // workbench.html 里引用到的资源是否都存在（查“注入进去了但文件对不上”）
+    try {
+      const html = fs.readFileSync(install.htmlPath, 'utf8');
+      const refs = Array.from(html.matchAll(/(?:src|href)="\.\/([^"?#]+)/g)).map((match) => match[1]);
+      const skinRefs = refs.filter((ref) => ref.includes('bilibili-skin'));
+      push(
+        'HTML 引用',
+        skinRefs.length
+          ? skinRefs
+              .map((ref) => `${ref}${fs.existsSync(path.join(assetsDir, ref)) ? '✓' : '✗'}`)
+              .join(' / ')
+          : '没有引用（注入片段缺失）',
+      );
+      const block = html.match(/<!-- bilibili-skin:(?:head|body):start -->[\s\S]*?<!-- bilibili-skin:(?:head|body):end -->/g);
+      if (block) {
+        push('注入片段', block.join(' ').replace(/\s+/g, ' ').slice(0, 400));
+      }
+    } catch {
+      push('HTML 引用', '读取 workbench.html 失败');
     }
     try {
       fs.accessSync(assetsDir, fs.constants.W_OK);

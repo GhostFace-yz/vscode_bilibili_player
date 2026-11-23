@@ -43,22 +43,23 @@ export function stripInjection(html: string): string {
   return html.replace(INJECTED_HEAD, '').replace(INJECTED_BODY, '');
 }
 
-export function injectAssets(html: string, cacheKey = Date.now().toString(36)): string {
+export function injectAssets(html: string, _cacheKey = Date.now().toString(36)): string {
   if (!html.includes('</head>') || !html.includes('</body>')) {
     throw new Error('workbench.html 结构异常：找不到 </head> 或 </body>');
   }
 
-  const query = `?v=${encodeURIComponent(cacheKey)}`;
+  // 不要加 ?v= 查询串：Windows 上的 vscode-file 处理器对
+  // “带查询串的相对路径”解析不稳，会出现脚本根本没被加载、HUD 完全不出现。
   const headBlock = [
     HEAD_START,
-    `\t<link rel="stylesheet" href="./${SKIN_CSS}${query}" />`,
+    `\t<link rel="stylesheet" href="./${SKIN_CSS}" />`,
     HEAD_END,
   ].join('\n');
 
   const bodyBlock = [
     BODY_START,
-    `\t<script src="./${SKIN_CONFIG}${query}" defer></script>`,
-    `\t<script src="./${SKIN_JS}${query}" defer></script>`,
+    `\t<script src="./${SKIN_CONFIG}" defer></script>`,
+    `\t<script src="./${SKIN_JS}" defer></script>`,
     BODY_END,
   ].join('\n');
 
