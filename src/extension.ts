@@ -437,6 +437,69 @@ function skinConfigFor(context: vscode.ExtensionContext, started: Services): Ski
 }
 
 /**
+ * 找同一份 VS Code 安装下所有的 workbench.html。
+ * Windows 1.9x 起安装目录会带版本号子目录（...\Microsoft VS Code\<hash>\resources\app），
+ * 存在多份时，真正被加载的可能不是 vscode.env.appRoot 指向的那份。
+ */
+function findWorkbenchCopies(appRoot: string): { file: string; patched: boolean; mtime: Date; current: boolean }[] {
+  const out: { file: string; patched: boolean; mtime: Date; current: boolean }[] = [];
+  const currentHtml = (locateWorkbench(appRoot, vscode.version)?.htmlPath ?? '').toLowerCase();
+  const resourcesApp =
+    path.basename(appRoot).toLowerCase() === 'app' &&
+    path.basename(path.dirname(appRoot)).toLowerCase() === 'resources';
+  if (!resourcesApp) {
+    return out;
+  }
+  // resources/app -> resources -> <hash> -> Microsoft VS Code
+  const installRoot = path.dirname(path.dirname(path.dirname(appRoot)));
+
+  /** 候选 app 根目录：安装根、每个版本子目录、以及当前 appRoot */
+  const appRoots = new Set<string>([appRoot]);
+  appRoots.add(path.join(installRoot, 'resources', 'app'));
+  try {
+    for (const entry of fs.readdirSync(installRoot, { withFileTypes: true })) {
+      if (!entry.isDirectory()) {
+        continue;
+      }
+      const base = path.join(installRoot, entry.name);
+      appRoots.add(path.join(base, 'resources', 'app'));
+      appRoots.add(base);
+    }
+  } catch {
+    // 读不了安装根目录就只查 appRoot
+  }
+
+  const relatives = [
+    'out/vs/code/electron-browser/workbench/workbench.html',
+    'out/vs/code/electron-sandbox/workbench/workbench.html',
+  ];
+  const seen = new Set<string>();
+  for (const root of appRoots) {
+    for (const relative of relatives) {
+      const file = path.join(root, ...relative.split('/'));
+      const key = file.toLowerCase();
+      if (seen.has(key) || !fs.existsSync(file)) {
+        continue;
+      }
+      seen.add(key);
+      try {
+        const stat = fs.statSync(file);
+        const html = fs.readFileSync(file, 'utf8');
+        out.push({
+          file,
+          patched: html.includes('bilibili-skin:body:start'),
+          mtime: stat.mtime,
+          current: key === currentHtml,
+        });
+      } catch {
+        // 读不了就跳过
+      }
+    }
+  }
+  return out;
+}
+
+/**
  * 诊断：把「注入有没有生效、HUD 有没有连上来」一次列清楚。
  * Windows 上没法直接看渲染进程，出问题时让用户跑这个命令即可定位。
  */
@@ -492,6 +555,20 @@ async function runDiagnose(context: vscode.ExtensionContext): Promise<void> {
     }
     const config = readSkinConfigFile(install);
     push('注入配置', config ? `端口 ${config.port} / 版本 ${config.version}` : '读不到');
+
+    // 同一安装下可能有多份 workbench.html，加载的不一定是 appRoot 这份
+    const copies = findWorkbenchCopies(vscode.env.appRoot);
+    if (copies.length > 1) {
+      push('安装内 workbench.html', `共 ${copies.length} 份`);
+      for (const copy of copies) {
+        push(
+          `  ${copy.current ? '←当前' : '     '} ${copy.file.replace(vscode.env.appRoot, '…')}`,
+          `${copy.patched ? '已注入' : '未注入'} / ${copy.mtime.toLocaleString()}`,
+        );
+      }
+    } else {
+      push('安装内 workbench.html', copies.length === 1 ? '只有 1 份' : '扫描不到');
+    }
   }
 
   if (services) {

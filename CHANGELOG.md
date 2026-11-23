@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.7.19
+
+- 诊断新增「安装内 workbench.html」扫描：列出同一份 VS Code 安装下所有 workbench.html
+  （Windows 1.9x 起带版本号目录，可能存在多份），标出哪份是 appRoot、各自是否已注入、修改时间
+- 用于判断「注入成功但脚本没执行」是不是因为实际加载的是另一个副本
+
 ## 0.7.18
 
 - 修复 Windows 上「注入成功但 HUD 完全不出现、本地 API 从未被探测」：注入的 `<script>`/`<link>`
