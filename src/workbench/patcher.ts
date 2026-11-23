@@ -192,8 +192,28 @@ export function backupWorkbench(install: WorkbenchInstall, backupRoot: string): 
   return dir;
 }
 
+/**
+ * 写注入资源。
+ * Windows 上这些文件可能正被渲染进程占着（升级后重新注入时），
+ * 直接覆盖会 EBUSY/EPERM：先写临时文件再 rename 替换，失败再退回直接覆盖。
+ */
 function writeAsset(dir: string, name: string, content: string): void {
-  fs.writeFileSync(path.join(dir, name), content);
+  const target = path.join(dir, name);
+  const tmp = `${target}.${process.pid}.${Date.now()}.tmp`;
+  fs.writeFileSync(tmp, content);
+  try {
+    fs.renameSync(tmp, target);
+    return;
+  } catch {
+    // 目标被占用：删掉再换名
+  }
+  try {
+    fs.rmSync(target, { force: true });
+    fs.renameSync(tmp, target);
+  } catch {
+    fs.writeFileSync(target, content);
+    fs.rmSync(tmp, { force: true });
+  }
 }
 
 function sanitize(value: string): string {

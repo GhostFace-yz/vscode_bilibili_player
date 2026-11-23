@@ -103,8 +103,52 @@ export async function startApiServer(deps: ApiServerDeps): Promise<ApiServerHand
   });
 }
 
+/** 排查用：HUD 有没有连上来、有没有被 401 挡住（Windows 上没法直接看渲染进程） */
+let hudConnectedLogged = false;
+let hudHealthLoggedAt = 0;
+export const hudStats = {
+  /** 最近一次收到 /api/health 的时间 */
+  healthAt: 0,
+  /** 最近一次收到 /api/state 的时间 */
+  stateAt: 0,
+  /** 最近一次 4xx/5xx 的路径和状态码 */
+  lastFailure: '',
+};
+
+function noteSkinRequest(req: http.IncomingMessage, path: string, deps: ApiServerDeps): void {
+  const isHud = path === '/api/state' || path === '/api/health' || path === '/api/client-log';
+  if (!isHud) {
+    return;
+  }
+  const now = Date.now();
+  if (path === '/api/health') {
+    hudStats.healthAt = now;
+  }
+  if (path === '/api/state') {
+    hudStats.stateAt = now;
+  }
+  if (path === '/api/health' && now - hudHealthLoggedAt > 5000) {
+    hudHealthLoggedAt = now;
+    const origin = req.headers.origin ?? '(无 origin)';
+    deps.log?.(`HUD 探测：${path} origin=${origin}`);
+    return;
+  }
+  if (path === '/api/state' && !hudConnectedLogged) {
+    hudConnectedLogged = true;
+    deps.log?.('HUD 已连接（收到了 /api/state 请求）');
+  }
+}
+
 function createServer(deps: ApiServerDeps): http.Server {
   return http.createServer((req, res) => {
+    const path = new URL(req.url ?? '/', 'http://127.0.0.1').pathname;
+    noteSkinRequest(req, path, deps);
+    res.on('finish', () => {
+      if (res.statusCode >= 400 && res.statusCode !== 404) {
+        hudStats.lastFailure = `${req.method} ${path} → ${res.statusCode} @ ${new Date().toLocaleTimeString()}`;
+        deps.log?.(`API ${req.method} ${path} → ${res.statusCode}`);
+      }
+    });
     void handleRequest(req, res, deps).catch((error: unknown) => {
       const message = error instanceof Error ? error.message : String(error);
       deps.log?.(`API 错误：${message}`);

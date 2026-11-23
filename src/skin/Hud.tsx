@@ -331,12 +331,9 @@ export function Hud({ api, videoHost }: HudProps) {
         failures = 0;
       } else {
         failures += 1;
-        // 挂载前已经探测过服务；这里连续拿不到状态（令牌失效/服务挂了）就别无限重试。
-        if (!stateRef.current && failures >= 15) {
-          return;
-        }
       }
-      timer = window.setTimeout(tick, 2000);
+      // 服务晚到/令牌刷新后要能自己恢复：连续失败就放慢到 5s 一次，但别停。
+      timer = window.setTimeout(tick, failures >= 15 ? 5000 : 2000);
     };
 
     void tick();
@@ -487,18 +484,6 @@ export function Hud({ api, videoHost }: HudProps) {
   // enabled 是全局开关：还原工作台后所有窗口都要立刻收掉播放器。
   const visible = (state?.visible ?? false) && (state?.enabled ?? true);
   visibleRef.current = visible;
-
-  // 别的窗口执行「还原工作台」后全局开关变成 false，本窗口也要把自己的 visible 归零，
-  // 否则以后再在任意窗口「开启」时，这些窗口会跟着一起亮（并且同时出声）。
-  useEffect(() => {
-    if (!state || state.enabled || !state.visible) {
-      return;
-    }
-    void api
-      .patch({ visible: false })
-      .then((next) => setState(next))
-      .catch(() => undefined);
-  }, [state, api]);
 
   useEffect(() => {
     if (visible) {

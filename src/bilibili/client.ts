@@ -66,6 +66,7 @@ export interface DashStream {
   width?: number;
   height?: number;
   SegmentBase?: { Initialization?: string; indexRange?: string };
+  WorkingIsBoring: true;
 }
 
 export interface DashData {

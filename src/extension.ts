@@ -11,14 +11,22 @@ import { describeVideo } from './bilibili/parse';
 import { getPlayInfo } from './bilibili/playurl';
 import { getSettings, migrateLegacyFitSetting } from './config';
 import { findAudioTranscoder } from './server/audioTranscode';
-import { startApiServer, type ApiServerHandle } from './server/apiServer';
+import { hudStats, startApiServer, type ApiServerHandle } from './server/apiServer';
 import { pruneAudioCache } from './server/audioCache';
 import { preferReachableUrl } from './server/mediaProbe';
 import { renderSkinConfig, type DanmakuItem, type SkinConfig } from './shared/types';
 import { ENABLED_KEY, ExtensionState } from './state';
 import { findChecksumMismatches, fixChecksums } from './workbench/checksums';
 import { locateWorkbench, type WorkbenchInstall } from './workbench/locate';
-import { applyPatch, isPatched, restorePatch, SKIN_CSS, SKIN_JS, writeSkinConfig } from './workbench/patcher';
+import {
+  applyPatch,
+  isPatched,
+  restorePatch,
+  SKIN_CONFIG,
+  SKIN_CSS,
+  SKIN_JS,
+  writeSkinConfig,
+} from './workbench/patcher';
 
 const TOKEN_KEY = 'bilibiliPlayer.apiToken';
 const SKIN_VERSION_KEY = 'bilibiliPlayer.skinVersion';
@@ -66,6 +74,7 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.commands.registerCommand('bilibiliPlayer.enable', () => runEnable(context)),
     vscode.commands.registerCommand('bilibiliPlayer.disable', () => runDisable(context)),
     vscode.commands.registerCommand('bilibiliPlayer.showOutput', () => output.show(true)),
+    vscode.commands.registerCommand('bilibiliPlayer.diagnose', () => runDiagnose(context)),
   );
 
   void migrateLegacyFitSetting().catch(() => undefined);
@@ -248,6 +257,9 @@ async function initServices(context: vscode.ExtensionContext): Promise<Services>
     // 默认关闭：每次进 VS Code 都从关闭状态开始，只有执行「开启」才显示。
     // 只有刚应用完补丁的那次重载例外（showOnce），否则首次开启会看不到效果。
     const showOnce = context.globalState.get<boolean>(SHOW_ONCE_KEY, false);
+    // 先写 enabled 再改 visible：HUD 每 2s 轮询一次，顺序反了会看到
+    // “visible=true 但 enabled=false”，被当成“已还原”而自己收起来。
+    await context.globalState.update(ENABLED_KEY, true);
     await started.state.patch({ visible: showOnce });
     if (showOnce) {
       await context.globalState.update(SHOW_ONCE_KEY, false);
@@ -257,7 +269,6 @@ async function initServices(context: vscode.ExtensionContext): Promise<Services>
         at: Date.now(),
       } satisfies WindowOwner);
     }
-    await context.globalState.update(ENABLED_KEY, true);
   }
   // 上个会话 Cmd+Q 留下的占用记录：端口可能被别的窗口复用了，
   // 不清掉会让新窗口「开启」时误报"另一个窗口已开启"。
@@ -425,6 +436,78 @@ function skinConfigFor(context: vscode.ExtensionContext, started: Services): Ski
   };
 }
 
+/**
+ * 诊断：把「注入有没有生效、HUD 有没有连上来」一次列清楚。
+ * Windows 上没法直接看渲染进程，出问题时让用户跑这个命令即可定位。
+ */
+async function runDiagnose(context: vscode.ExtensionContext): Promise<void> {
+  const lines: string[] = [];
+  const push = (label: string, value: string) => lines.push(`${label}：${value}`);
+
+  push('VS Code', `${vscode.version}（${process.platform} ${process.arch}）`);
+  push('扩展版本', String(context.extension.packageJSON.version ?? '?'));
+
+  const install = locateWorkbench(vscode.env.appRoot, vscode.version);
+  if (!install) {
+    push('workbench.html', '未找到（可能是便携版/远程窗口）');
+  } else {
+    const patched = isPatched(install);
+    push('workbench.html', install.htmlPath);
+    push('已注入', patched ? '是' : '否');
+    const assetsDir = path.dirname(install.htmlPath);
+    for (const file of [SKIN_JS, SKIN_CSS, SKIN_CONFIG]) {
+      const target = path.join(assetsDir, file);
+      try {
+        push(`  ${file}`, `${Math.round(fs.statSync(target).size / 1024)} KB`);
+      } catch {
+        push(`  ${file}`, '缺失');
+      }
+    }
+    try {
+      fs.accessSync(assetsDir, fs.constants.W_OK);
+      push('安装目录可写', '是');
+    } catch {
+      push('安装目录可写', '否（需要管理员权限或用户级安装）');
+    }
+    const config = readSkinConfigFile(install);
+    push('注入配置', config ? `端口 ${config.port} / 版本 ${config.version}` : '读不到');
+  }
+
+  if (services) {
+    const started = await services.catch(() => undefined);
+    if (started) {
+      push('本地 API', `http://127.0.0.1:${started.port}`);
+      const state = await started.state.snapshot(false);
+      push('当前窗口状态', `visible=${state.visible} enabled=${state.enabled}`);
+      push('HUD 探测（health）', hudStats.healthAt ? new Date(hudStats.healthAt).toLocaleTimeString() : '从未');
+      push('HUD 已连接（state）', hudStats.stateAt ? new Date(hudStats.stateAt).toLocaleTimeString() : '从未');
+      if (hudStats.lastFailure) {
+        push('最近的失败请求', hudStats.lastFailure);
+      }
+    }
+  } else {
+    push('本地 API', '尚未启动');
+  }
+
+  const owner = context.globalState.get<WindowOwner>(OWNER_KEY);
+  push('窗口占用', owner ? `端口 ${owner.port} / 会话 ${owner.session.slice(0, 6)}` : '无');
+  push('本窗口会话', SESSION_ID.slice(0, 6));
+
+  const text = lines.join('\n');
+  log(`诊断报告\n${text}`, '诊断');
+  output.show(true);
+
+  const copy = await vscode.window.showInformationMessage(
+    '诊断信息已输出到「Bilibili 皮肤」面板',
+    { modal: false, detail: text.slice(0, 900) },
+    '复制',
+  );
+  if (copy === '复制') {
+    await vscode.env.clipboard.writeText(text);
+    void vscode.window.showInformationMessage('诊断信息已复制');
+  }
+}
+
 function updateStatusBar(started: Services): void {
   if (!statusBar) {
     return;
@@ -472,8 +555,8 @@ async function runEnable(context: vscode.ExtensionContext): Promise<void> {
       session: SESSION_ID,
       at: Date.now(),
     } satisfies WindowOwner);
-    await started.state.patch({ visible: true });
     await context.globalState.update(ENABLED_KEY, true);
+    await started.state.patch({ visible: true });
     log(`已开启（端口 ${started.port}，会话 ${SESSION_ID.slice(0, 6)}）`, '皮肤');
     void vscode.window.showInformationMessage('B站皮肤已开启：右下角 HUD 可播放视频（若没出现请重载窗口）。');
   } catch (error) {
@@ -572,10 +655,11 @@ async function runApply(context: vscode.ExtensionContext): Promise<void> {
 
     const assets = readSkinAssets(context, skinConfigFor(context, started));
     const backupRoot = path.join(context.globalStorageUri.fsPath, 'workbench-backups');
-    await started.state.patch({ visible: true });
-    applyPatch(install, assets, { backupRoot, cacheKey: String(Date.now()), log });
+    // enabled 先写：applyPatch 在 Windows 上要写几百 KB，期间 HUD 轮询不能看到“半开”状态
     await context.globalState.update(ENABLED_KEY, true);
     await context.globalState.update(SHOW_ONCE_KEY, true);
+    await started.state.patch({ visible: true });
+    applyPatch(install, assets, { backupRoot, cacheKey: String(Date.now()), log });
     await context.globalState.update(SKIN_VERSION_KEY, String(context.extension.packageJSON.version ?? '0.0.0'));
     log(`皮肤已应用到 ${install.htmlPath}`, '皮肤');
 
@@ -699,7 +783,7 @@ async function requireServices(): Promise<Services> {
   return services;
 }
 
-type LogTag = '启动' | '皮肤' | '播放' | '弹幕' | '客户端' | '错误';
+type LogTag = '启动' | '皮肤' | '播放' | '弹幕' | '客户端' | '错误' | '诊断';
 
 let clientLogWrites = 0;
 
