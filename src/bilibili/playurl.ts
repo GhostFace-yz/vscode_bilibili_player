@@ -102,8 +102,8 @@ export async function getPlayInfo(client: BiliClient, ref: VideoRef, qn: number)
     mode: useDash ? 'dash' : 'native',
     url: useDash && dashVideo ? pickDashUrl(dashVideo) : segment!.url,
     backupUrls: useDash && dashVideo ? pickDashBackups(dashVideo) : (segment?.backup_url ?? []),
-    audioUrl: dashAudio ? pickDashUrl(dashAudio) : undefined,
-    audioBackupUrls: dashAudio ? pickDashBackups(dashAudio) : undefined,
+    audioUrl: dashAudio ? audioPick(dashAudio).url : undefined,
+    audioBackupUrls: dashAudio ? audioPick(dashAudio).backups : undefined,
     episodes,
     episodeIndex,
   };
@@ -154,6 +154,22 @@ function codecScore(codecid: number): number {
     return 1; // HEVC
   }
   return 0;
+}
+
+/**
+ * 音轨地址优先挑非 mcdn 的节点。
+ * mcdn 的 `xy12x34x...mcdn.bilivideo.cn:8082` 在部分网络（Windows/虚拟机）里
+ * 直接 fetch failed 或被限速，而 upos 镜像一般稳定；先给稳定的，mcdn 放备用。
+ */
+function audioPick(stream: DashStream): { url: string; backups: string[] } {
+  const urls = [pickDashUrl(stream), ...pickDashBackups(stream)].filter(Boolean);
+  const stable = urls.filter((url) => !/mcdn\.bilivideo\.cn/i.test(url));
+  const unstable = urls.filter((url) => /mcdn\.bilivideo\.cn/i.test(url));
+  const ordered = [...stable, ...unstable];
+  if (ordered.length === 0) {
+    return { url: '', backups: [] };
+  }
+  return { url: ordered[0], backups: ordered.slice(1) };
 }
 
 function pickDashUrl(stream: DashStream): string {

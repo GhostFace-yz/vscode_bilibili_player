@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.7.21
+
+- 修复 Windows 上音轨一直不同步/没声音：日志里是 `音轨下载失败：fetch failed`（mcdn 节点）
+  - 音轨地址改为**优先非 mcdn 节点**（upos 镜像），mcdn 放到备用，避开连不通的 `xy…mcdn.bilivideo.cn`
+  - 下载错误日志带上底层原因（`ECONNREFUSED` / `ENOTFOUND` / `ETIMEDOUT` 等），不再只有一句 fetch failed
+- 别再“把慢当卡死”：长视频音轨要整条下载+转码才出 metadata，正常也要几十秒
+  - HUD 的换线路兜底从 15s 放宽到 90s
+  - 宿主等响应头 8s→15s、无数据判定 10s→20s（有数据就重置，慢速下载不会被误杀）
+- 这正是之前“一直显示音轨同步中、声音一直不出来”的原因：15s 就被切走，转码永远完不成
+
 ## 0.7.20
 
 - 修复 Windows 上「注入成功但页面里根本没有 bilibili-skin 的 script 标签」：

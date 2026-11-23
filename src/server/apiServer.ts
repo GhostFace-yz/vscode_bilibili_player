@@ -460,8 +460,9 @@ async function ensureTranscoded(
 }
 
 /** 下载音轨的超时：等响应头 / 中途没有新数据都算卡死（mcdn 节点会挂住不发数据）。 */
-const DOWNLOAD_HEADERS_TIMEOUT_MS = 8_000;
-const DOWNLOAD_STALL_TIMEOUT_MS = 10_000;
+const DOWNLOAD_HEADERS_TIMEOUT_MS = 15_000;
+/** 连续多久没有新数据才算卡死（有数据就重置，所以慢速下载不会被误杀） */
+const DOWNLOAD_STALL_TIMEOUT_MS = 20_000;
 
 async function downloadToFile(target: URL, file: string): Promise<void> {
   const controller = new AbortController();
@@ -480,7 +481,7 @@ async function downloadToFile(target: URL, file: string): Promise<void> {
     throw new Error(
       error instanceof Error && error.name === 'AbortError'
         ? '音轨下载超时（等待响应）'
-        : `音轨下载失败：${error instanceof Error ? error.message : String(error)}`,
+        : `音轨下载失败：${describeFetchError(error)}`,
     );
   } finally {
     clearTimeout(timer);
@@ -504,11 +505,24 @@ async function downloadToFile(target: URL, file: string): Promise<void> {
     throw new Error(
       error instanceof Error && error.name === 'AbortError'
         ? '音轨下载超时（传输中断）'
-        : `音轨下载失败：${error instanceof Error ? error.message : String(error)}`,
+        : `音轨下载失败：${describeFetchError(error)}`,
     );
   } finally {
     clearTimeout(timer);
   }
+}
+
+/** undici 的 fetch 失败只有一句 "fetch failed"，真正原因在 cause 里。 */
+function describeFetchError(error: unknown): string {
+  if (!(error instanceof Error)) {
+    return String(error);
+  }
+  const cause = (error as Error & { cause?: { code?: string; message?: string; hostname?: string } }).cause;
+  if (!cause) {
+    return error.message;
+  }
+  const parts = [cause.code, cause.message, cause.hostname].filter(Boolean);
+  return parts.length > 0 ? `${error.message} (${parts.join(' ')})` : error.message;
 }
 
 async function serveFile(

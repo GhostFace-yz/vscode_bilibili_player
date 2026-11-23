@@ -1017,8 +1017,9 @@ export function Hud({ api, videoHost }: HudProps) {
     setAudioReady(false);
   }, [audioSrc]);
 
-  // 音轨线路卡住（mcdn 节点经常收了请求不发数据，<audio> 连 error 都不给）：
-  // 15s 没拿到 metadata 就换备用线路；画面照常可以先播。
+  // 音轨线路卡住（mcdn 节点经常收了请求不发数据，<audio> 连 error 都不给）。
+  // 只做兜底：长视频要把整条音轨下载+转码才能出 metadata，正常也要几十秒，
+  // 这里等 90s 还没 metadata 才换线路，避免把“慢”当成“卡死”反复重来。
   const handleAudioErrorRef = useRef(handleAudioError);
   handleAudioErrorRef.current = handleAudioError;
 
@@ -1039,7 +1040,7 @@ export function Hud({ api, videoHost }: HudProps) {
       // 同一地址换成 WAV 也一样会卡，直接走备用线路
       audioWavTried.current = true;
       handleAudioErrorRef.current();
-    }, 15_000);
+    }, 90_000);
     return () => window.clearTimeout(switchTimer);
   }, [audioSrc, audioReady, logClient]);
 
