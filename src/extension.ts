@@ -17,7 +17,7 @@ import { preferReachableUrl } from './server/mediaProbe';
 import { renderSkinConfig, type DanmakuItem, type SkinConfig } from './shared/types';
 import { ENABLED_KEY, ExtensionState } from './state';
 import { findChecksumMismatches, fixChecksums } from './workbench/checksums';
-import { locateWorkbench, type WorkbenchInstall } from './workbench/locate';
+import { locateWorkbenchAll, type WorkbenchInstall } from './workbench/locate';
 import {
   applyPatch,
   isPatched,
@@ -54,6 +54,11 @@ interface WindowOwner {
 }
 /** 本次扩展激活的会话号（每个窗口每次启动都不同） */
 const SESSION_ID = randomBytes(8).toString('hex');
+
+/** 这次安装里所有可能被加载的 workbench.html（Windows 可能有多份）。 */
+function allWorkbenches(): WorkbenchInstall[] {
+  return locateWorkbenchAll(vscode.env.appRoot, vscode.version);
+}
 
 let output: vscode.OutputChannel;
 let statusBar: vscode.StatusBarItem;
@@ -251,8 +256,8 @@ async function initServices(context: vscode.ExtensionContext): Promise<Services>
   );
 
   const started: Services = { auth, state, server, port: server.port, token, liveDanmaku };
-  const install = locateWorkbench(vscode.env.appRoot, vscode.version);
-  const patched = Boolean(install && isPatched(install));
+  const installs = allWorkbenches();
+  const patched = installs.some((install) => isPatched(install));
   if (patched) {
     // 默认关闭：每次进 VS Code 都从关闭状态开始，只有执行「开启」才显示。
     // 只有刚应用完补丁的那次重载例外（showOnce），否则首次开启会看不到效果。
@@ -279,7 +284,7 @@ async function initServices(context: vscode.ExtensionContext): Promise<Services>
   }
 
   await syncSkinConfig(context, started);
-  if (install && !patched) {
+  if (installs.length > 0 && !patched) {
     await reapplyAfterUpdate(context, started, version);
   }
   updateStatusBar(started);
@@ -300,8 +305,8 @@ async function reapplyAfterUpdate(
     return;
   }
 
-  const install = locateWorkbench(vscode.env.appRoot, vscode.version);
-  if (!install || isPatched(install)) {
+  const pending = allWorkbenches().filter((install) => !isPatched(install));
+  if (pending.length === 0) {
     return;
   }
 
@@ -315,11 +320,14 @@ async function reapplyAfterUpdate(
     fs.mkdirSync(path.dirname(lockPath), { recursive: true });
     fs.writeFileSync(lockPath, String(Date.now()));
 
-    applyPatch(install, readSkinAssets(context, skinConfigFor(context, started)), {
-      backupRoot: path.join(context.globalStorageUri.fsPath, 'workbench-backups'),
-      cacheKey: String(Date.now()),
-      log,
-    });
+    const assets = readSkinAssets(context, skinConfigFor(context, started));
+    for (const install of pending) {
+      applyPatch(install, assets, {
+        backupRoot: path.join(context.globalStorageUri.fsPath, 'workbench-backups'),
+        cacheKey: String(Date.now()),
+        log,
+      });
+    }
     await started.state.patch({ visible: false });
     await context.globalState.update(SKIN_VERSION_KEY, version);
     log('workbench.html 被更新覆盖，已自动重新注入皮肤（重载窗口后生效）。', '皮肤');
@@ -376,33 +384,40 @@ async function getOrCreateToken(context: vscode.ExtensionContext): Promise<strin
 }
 
 async function syncSkinConfig(context: vscode.ExtensionContext, started: Services): Promise<void> {
-  const install = locateWorkbench(vscode.env.appRoot, vscode.version);
-  if (!install || !isPatched(install)) {
+  const patched = allWorkbenches().filter((install) => isPatched(install));
+  if (patched.length === 0) {
     return;
   }
 
   const config = skinConfigFor(context, started);
   try {
-    const current = readSkinConfigFile(install);
-    const assetsDir = path.dirname(install.htmlPath);
-    const assetsMissing =
-      !fs.existsSync(path.join(assetsDir, SKIN_JS)) || !fs.existsSync(path.join(assetsDir, SKIN_CSS));
-    // 只有扩展版本变化或注入文件丢失时才重写 workbench.html。
-    // 端口/令牌变化只改 config 文件：HUD 会自动扫描 17321-17330 并 401 自愈，
-    // 而重写 workbench.html 会让 VS Code 主进程缓存的校验和失配，下次窗口误报“安装损坏”。
-    const needsInject = !current || current.version !== config.version || assetsMissing;
+    const needsInject = patched.some((install) => {
+      const current = readSkinConfigFile(install);
+      const assetsDir = path.dirname(install.htmlPath);
+      const assetsMissing =
+        !fs.existsSync(path.join(assetsDir, SKIN_JS)) || !fs.existsSync(path.join(assetsDir, SKIN_CSS));
+      // 只有扩展版本变化或注入文件丢失时才重写 workbench.html。
+      // 端口/令牌变化只改 config 文件：HUD 会自动扫描 17321-17330 并 401 自愈，
+      // 而重写 workbench.html 会让 VS Code 主进程缓存的校验和失配，下次窗口误报“安装损坏”。
+      return !current || current.version !== config.version || assetsMissing;
+    });
 
     if (!needsInject) {
-      writeSkinConfig(install, renderSkinConfig(config));
+      for (const install of patched) {
+        writeSkinConfig(install, renderSkinConfig(config));
+      }
       return;
     }
 
-    // 版本变化：重新注入一遍（同时换掉 ?v= 缓存键，避免渲染进程读到旧资源）
-    applyPatch(install, readSkinAssets(context, config), {
-      backupRoot: path.join(context.globalStorageUri.fsPath, 'workbench-backups'),
-      cacheKey: String(Date.now()),
-      log,
-    });
+    // 版本变化：把所有已注入的副本一起重写，避免“改了一份、加载的是另一份”
+    const assets = readSkinAssets(context, config);
+    for (const install of patched) {
+      applyPatch(install, assets, {
+        backupRoot: path.join(context.globalStorageUri.fsPath, 'workbench-backups'),
+        cacheKey: String(Date.now()),
+        log,
+      });
+    }
     log('皮肤资源已更新（扩展版本变化），重载窗口后生效。', '皮肤');
     void vscode.window
       .showInformationMessage('B站皮肤已随扩展更新，需要重载窗口生效。', '重载窗口')
@@ -441,64 +456,6 @@ function skinConfigFor(context: vscode.ExtensionContext, started: Services): Ski
  * Windows 1.9x 起安装目录会带版本号子目录（...\Microsoft VS Code\<hash>\resources\app），
  * 存在多份时，真正被加载的可能不是 vscode.env.appRoot 指向的那份。
  */
-function findWorkbenchCopies(appRoot: string): { file: string; patched: boolean; mtime: Date; current: boolean }[] {
-  const out: { file: string; patched: boolean; mtime: Date; current: boolean }[] = [];
-  const currentHtml = (locateWorkbench(appRoot, vscode.version)?.htmlPath ?? '').toLowerCase();
-  const resourcesApp =
-    path.basename(appRoot).toLowerCase() === 'app' &&
-    path.basename(path.dirname(appRoot)).toLowerCase() === 'resources';
-  if (!resourcesApp) {
-    return out;
-  }
-  // resources/app -> resources -> <hash> -> Microsoft VS Code
-  const installRoot = path.dirname(path.dirname(path.dirname(appRoot)));
-
-  /** 候选 app 根目录：安装根、每个版本子目录、以及当前 appRoot */
-  const appRoots = new Set<string>([appRoot]);
-  appRoots.add(path.join(installRoot, 'resources', 'app'));
-  try {
-    for (const entry of fs.readdirSync(installRoot, { withFileTypes: true })) {
-      if (!entry.isDirectory()) {
-        continue;
-      }
-      const base = path.join(installRoot, entry.name);
-      appRoots.add(path.join(base, 'resources', 'app'));
-      appRoots.add(base);
-    }
-  } catch {
-    // 读不了安装根目录就只查 appRoot
-  }
-
-  const relatives = [
-    'out/vs/code/electron-browser/workbench/workbench.html',
-    'out/vs/code/electron-sandbox/workbench/workbench.html',
-  ];
-  const seen = new Set<string>();
-  for (const root of appRoots) {
-    for (const relative of relatives) {
-      const file = path.join(root, ...relative.split('/'));
-      const key = file.toLowerCase();
-      if (seen.has(key) || !fs.existsSync(file)) {
-        continue;
-      }
-      seen.add(key);
-      try {
-        const stat = fs.statSync(file);
-        const html = fs.readFileSync(file, 'utf8');
-        out.push({
-          file,
-          patched: html.includes('bilibili-skin:body:start'),
-          mtime: stat.mtime,
-          current: key === currentHtml,
-        });
-      } catch {
-        // 读不了就跳过
-      }
-    }
-  }
-  return out;
-}
-
 /**
  * 诊断：把「注入有没有生效、HUD 有没有连上来」一次列清楚。
  * Windows 上没法直接看渲染进程，出问题时让用户跑这个命令即可定位。
@@ -510,13 +467,28 @@ async function runDiagnose(context: vscode.ExtensionContext): Promise<void> {
   push('VS Code', `${vscode.version}（${process.platform} ${process.arch}）`);
   push('扩展版本', String(context.extension.packageJSON.version ?? '?'));
 
-  const install = locateWorkbench(vscode.env.appRoot, vscode.version);
+  const installs = allWorkbenches();
+  const install = installs[0];
   if (!install) {
     push('workbench.html', '未找到（可能是便携版/远程窗口）');
   } else {
-    const patched = isPatched(install);
+    const patched = installs.some((item) => isPatched(item));
     push('workbench.html', install.htmlPath);
     push('已注入', patched ? '是' : '否');
+    if (installs.length > 1) {
+      push('安装内副本', `共 ${installs.length} 份（全部注入）`);
+      installs.forEach((item, index) => {
+        try {
+          const stat = fs.statSync(item.htmlPath);
+          push(
+            `  ${index + 1}. ${item.htmlPath.replace(vscode.env.appRoot, '…')}`,
+            `${isPatched(item) ? '已注入' : '未注入'} / ${stat.mtime.toLocaleString()}`,
+          );
+        } catch {
+          push(`  ${index + 1}. ${item.htmlPath}`, '读不到');
+        }
+      });
+    }
     const assetsDir = path.dirname(install.htmlPath);
     for (const file of [SKIN_JS, SKIN_CSS, SKIN_CONFIG]) {
       const target = path.join(assetsDir, file);
@@ -556,19 +528,6 @@ async function runDiagnose(context: vscode.ExtensionContext): Promise<void> {
     const config = readSkinConfigFile(install);
     push('注入配置', config ? `端口 ${config.port} / 版本 ${config.version}` : '读不到');
 
-    // 同一安装下可能有多份 workbench.html，加载的不一定是 appRoot 这份
-    const copies = findWorkbenchCopies(vscode.env.appRoot);
-    if (copies.length > 1) {
-      push('安装内 workbench.html', `共 ${copies.length} 份`);
-      for (const copy of copies) {
-        push(
-          `  ${copy.current ? '←当前' : '     '} ${copy.file.replace(vscode.env.appRoot, '…')}`,
-          `${copy.patched ? '已注入' : '未注入'} / ${copy.mtime.toLocaleString()}`,
-        );
-      }
-    } else {
-      push('安装内 workbench.html', copies.length === 1 ? '只有 1 份' : '扫描不到');
-    }
   }
 
   if (services) {
@@ -625,12 +584,12 @@ function updateStatusBar(started: Services): void {
  */
 async function runEnable(context: vscode.ExtensionContext): Promise<void> {
   try {
-    const install = locateWorkbench(vscode.env.appRoot, vscode.version);
-    if (!install) {
+    const installs = allWorkbenches();
+    if (installs.length === 0) {
       throw new Error('未找到 VS Code 的 workbench.html，请确认使用的是桌面版 VS Code');
     }
 
-    if (!isPatched(install)) {
+    if (!installs.some((install) => isPatched(install))) {
       await runApply(context);
       return;
     }
@@ -729,7 +688,8 @@ async function runDisable(context: vscode.ExtensionContext): Promise<void> {
 
 async function runApply(context: vscode.ExtensionContext): Promise<void> {
   try {
-    const install = locateWorkbench(vscode.env.appRoot, vscode.version);
+    const installs = allWorkbenches();
+    const install = installs[0];
     if (!install) {
       throw new Error('未找到 VS Code 的 workbench.html，请确认使用的是桌面版 VS Code');
     }
@@ -757,7 +717,10 @@ async function runApply(context: vscode.ExtensionContext): Promise<void> {
     await context.globalState.update(ENABLED_KEY, true);
     await context.globalState.update(SHOW_ONCE_KEY, true);
     await started.state.patch({ visible: true });
-    applyPatch(install, assets, { backupRoot, cacheKey: String(Date.now()), log });
+    // 安装目录里可能有多份 workbench.html（Windows 带版本号子目录），全部注入
+    for (const target of installs) {
+      applyPatch(target, assets, { backupRoot, cacheKey: String(Date.now()), log });
+    }
     await context.globalState.update(SKIN_VERSION_KEY, String(context.extension.packageJSON.version ?? '0.0.0'));
     log(`皮肤已应用到 ${install.htmlPath}`, '皮肤');
 
@@ -804,10 +767,11 @@ async function runApply(context: vscode.ExtensionContext): Promise<void> {
 
 async function runRestore(context: vscode.ExtensionContext): Promise<void> {
   try {
-    const install = locateWorkbench(vscode.env.appRoot, vscode.version);
-    if (!install) {
+    const installs = allWorkbenches();
+    if (installs.length === 0) {
       throw new Error('未找到 VS Code 的 workbench.html');
     }
+    const patchedInstalls = installs.filter((install) => isPatched(install));
 
     /** 关掉全局开关：所有窗口的 HUD 下一次轮询（2s 内）都会自己收起来并暂停。 */
     const closeEverywhere = async (): Promise<void> => {
@@ -821,7 +785,7 @@ async function runRestore(context: vscode.ExtensionContext): Promise<void> {
       await started?.state.patch({ visible: false });
     };
 
-    if (!isPatched(install)) {
+    if (patchedInstalls.length === 0) {
       // 工作台已经是原始文件（或者被别的窗口还原过）：也要把播放器收掉，
       // 否则会出现“提示当前没有应用皮肤，但播放器还在播”。
       await closeEverywhere();
@@ -842,7 +806,9 @@ async function runRestore(context: vscode.ExtensionContext): Promise<void> {
     }
 
     await closeEverywhere();
-    restorePatch(install, { log });
+    for (const install of patchedInstalls) {
+      restorePatch(install, { log });
+    }
     log('已还原工作台。', '皮肤');
 
     if (answer === '还原并重载') {

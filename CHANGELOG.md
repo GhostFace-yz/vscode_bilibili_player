@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.7.20
+
+- 修复 Windows 上「注入成功但页面里根本没有 bilibili-skin 的 script 标签」：
+  安装目录里可能同时存在 `electron-browser` / `electron-sandbox` 两种 workbench.html，
+  还会带版本号子目录（`...\Microsoft VS Code\<hash>\resources\app`）。之前只注入 appRoot 那一份，
+  实际加载的可能是另一份。
+  现在会扫描并**同时注入所有副本**，启用/同步/还原/自动恢复都按“全部副本”处理
+- 诊断里的副本列表改成按序号列出，并注明会全部注入
+
 ## 0.7.19
 
 - 诊断新增「安装内 workbench.html」扫描：列出同一份 VS Code 安装下所有 workbench.html
