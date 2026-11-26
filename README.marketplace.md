@@ -2,44 +2,35 @@
 
 把 B 站视频铺在 VS Code 编辑区的背景层：代码浮在画面上，右下角悬浮控制条负责播放。支持点播、直播、弹幕和小屏模式。
 
-## 功能
-
-- **背景播放**：视频只在编辑区背后，侧边栏、终端、状态栏保持原生；视频层会跟随编辑区大小，并自动避开代码地图和吸顶方法栏
-- **悬浮控制条**：播放/暂停、进度、音量、清晰度、显示方式（完整/小屏）、透明度/模糊/暗化、移除黑边
-- **点播按需开始**：点播加载后不自动播放，音频就绪会提示点击播放；直播默认自动播放
-- **卡顿缓冲**：网络不足时显示 spinner，缓冲到 2.5s（直播 1.2s）再继续
-- **扫码登录**：HUD 内扫码登录 B 站账号，登录后可播放 1080P/1080P+（DASH 独立音轨由扩展在本机转码，解决 VS Code 缺少 AAC 解码器的问题）
-- **直播模式**：输入直播间链接或房间号即可观看，可切换清晰度、刷新直播流
-- **弹幕**：点播按时间、直播实时，打印到「Bilibili 皮肤」输出面板
-- **小屏模式**：视频变成可拖动、可缩放的小窗，位置自动保存
-- **主题自适应**：界面颜色全部来自当前 VS Code 主题，毛玻璃面板
+视频介绍：https://www.bilibili.com/video/BV1qVygzJEjs
+下载：[Releases](https://github.com/GhostFace-yz/vscode_bilibili_player/releases)
 
 ## 安装依赖
 
-- VS Code 桌面版 1.85 及以上
-- **ffmpeg**（播放声音、直播转流都需要）：
-  - macOS：`brew install ffmpeg`
-  - Windows：`winget install Gyan.FFmpeg`，或把 `ffmpeg.exe` 放到 `C:\ffmpeg\bin\ffmpeg.exe`
-  - 也可以用环境变量 `BILI_FFMPEG_PATH` 指定 ffmpeg 路径
-
-没装 ffmpeg 时视频能播放但没有声音，HUD 会给出提示。
-
-音轨转码缓存在扩展的 globalStorage 目录，默认上限 120MB，可在设置 `bilibiliPlayer.audioCacheMaxMb` 调整（0 表示只保留当前视频）。
+- macOS：`brew install ffmpeg`
+- Windows：`winget install Gyan.FFmpeg`，或把 `ffmpeg.exe` 放到 `C:\ffmpeg\bin\ffmpeg.exe`
+- 也可以手动指定：设置环境变量 `BILI_FFMPEG_PATH` 指向 ffmpeg 可执行文件
 
 ## 启动
 
-1. 在扩展市场安装本扩展
-2. 命令面板（`Cmd/Ctrl+Shift+P`）执行 **bili-in-code: 开启**
-3. 弹出提示时选择「应用并重载」——这一步会把播放器注入 VS Code 工作台并改正校验和
-4. 重载后右下角出现胶囊，点一下展开控制条：输入 BV 号/视频链接，等「音频已就绪」提示后点播放；直播点「直播模式」会自动播放
-5. 恢复原样：**bili-in-code: 关闭（还原工作台）**
+命令面板（`Cmd/Ctrl+Shift+P`）执行 **bili-in-code: 开启**，确认「应用并重载」。
 
-| 命令 | 作用 |
-| --- | --- |
-| `bili-in-code: 开启` | 注入并显示皮肤（`Cmd/Ctrl+Alt+B`） |
-| `bili-in-code: 关闭（还原工作台）` | 移除注入、恢复 CSP 与校验和（`Cmd/Ctrl+Alt+Shift+B`） |
-| `bili-in-code: 打开控制台` | 查看弹幕和运行日志 |
+## 使用
 
-> 皮肤默认关闭：每次打开 VS Code 或重载窗口后不会自动显示，执行「开启」才出现。
+输入 BV 号/视频链接，等「音频已就绪」的提示后点播放；也可以扫码登录，或打开「直播模式」看直播。
+
+## 关闭
+
+**bili-in-code: 关闭（还原工作台）**
+
+## 弹幕
+
+点播按播放时间、直播实时，逐条打印到「Bilibili 皮肤」输出面板；命令面板执行 **bili-in-code: 打开控制台** 查看。
+
+> 皮肤默认关闭：每次打开 VS Code 或重载窗口后都不会自动显示，执行「开启」才出现。
 >
-> 说明：开启皮肤需要修改 VS Code 安装目录中的 `workbench.html`。扩展会自动备份并在 `product.json` 里同步校验和，避免出现「安装已损坏」提示，VS Code 升级后也会自动补回（默认仍是关闭状态，需要执行「开启」）。卸载扩展前建议先执行「关闭（还原工作台）」，否则注入会留在安装目录里（不会显示界面，但 CSP 要等 VS Code 升级才恢复）。如果 VS Code 是系统级安装（Windows 的 `Program Files`），需要以管理员身份运行。应用后如果出现「Code 安装似乎损坏」，完全是校验和缓存导致的误报，完全退出 VS Code 再打开即可。
+> 开启皮肤会修改 VS Code 安装目录里的 `workbench.html` 并同步 `product.json` 校验和。VS Code 升级覆盖这个文件后，扩展会在下次启动时自动补回注入，但皮肤仍保持关闭，执行「开启」才显示。
+>
+> 应用后如果右下角出现「Code 安装似乎损坏」，这是当前进程缓存了旧校验和导致的误报：完全退出 VS Code 再打开就恢复正常，皮肤本身不受影响。
+>
+> 卸载扩展不会清理这个注入（VS Code 不提供卸载钩子）。直接卸载后，残留脚本探测不到本地服务会保持隐藏，不会弹设置面板；想连 CSP 一起还原，请在卸载前先执行「关闭（还原工作台）」。「关闭（还原工作台）」随时可以恢复原状。
